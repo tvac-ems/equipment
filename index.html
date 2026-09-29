@@ -532,14 +532,14 @@ function submitInspect(id) {
 
 // ════════ ACTIVITY ════════
 // ════════ NOTIFICATIONS (admins) ════════
-function notifOn() { return isAdmin() && store('tvac_notif') === 'on' && window.Notification && Notification.permission === 'granted'; }
+function notifOn() { return !!S.pin && store('tvac_notif') === 'on' && window.Notification && Notification.permission === 'granted'; }
 function setNotif(on) {
-  if (!on) { store('tvac_notif', null); toast('Notifications off'); renderAdmin(); return; }
+  if (!on) { store('tvac_notif', null); toast('Notifications off'); render(); return; }
   if (!window.Notification) { toast('This browser doesn\'t support notifications. On iPhone, add the app to your Home Screen first.', 5000); return; }
   Notification.requestPermission().then(function (p) {
     if (p === 'granted') { store('tvac_notif', 'on'); store('tvac_seen', null); checkNewAlerts(); toast('🔔 Notifications on'); }
     else toast('Notifications were blocked — allow them in your phone/browser settings', 5000);
-    renderAdmin();
+    render();
   });
 }
 function pushNotif(title, body, id) {
@@ -550,7 +550,7 @@ function pushNotif(title, body, id) {
 }
 function testNotif() { pushNotif('TVAC Equipment', 'Notifications are working ✓', ''); }
 function checkNewAlerts() {
-  if (!isAdmin() || store('tvac_notif') !== 'on') return;
+  if (!S.pin || store('tvac_notif') !== 'on') return;
   var now = {}, list = [];
   alertGroups().forEach(function (g) { g.items.forEach(function (i) { var k = g.key + ':' + i.id + ':' + g.why(i); now[k] = 1; list.push({ k: k, g: g, i: i }); }); });
   var prev = null; try { prev = JSON.parse(store('tvac_seen') || 'null'); } catch (e) {}
@@ -581,6 +581,11 @@ function updateAlertCount() {
   var n = Object.keys(ids).length;
   el.textContent = n > 99 ? '99+' : n; el.classList.toggle('hidden', !n);
 }
+function notifCard() {
+  return '<div class="card"><h2>🔔 App notifications <span class="badge ' + (notifOn() ? 'b-ok">On' : 'b-na">Off') + '</span></h2><div class="hint" style="margin-bottom:10px">Get a phone notification when an item expires, goes Out of Service, needs attention or goes missing. Works while the app is open or in the background. On iPhone, add the app to your Home Screen first. This setting is just for this phone.</div>' +
+    (notifOn() ? '<div class="row"><button class="btn ghost" onclick="testNotif()">Send test</button><button class="btn ghost" style="color:var(--bad)" onclick="setNotif(false)">Turn off</button></div>'
+      : '<button class="btn" onclick="setNotif(true)">🔔 Turn on notifications</button>') + '</div>';
+}
 function renderAlerts() {
   var groups = alertGroups();
   var total = groups.reduce(function (a, g) { return a + g.items.length; }, 0);
@@ -592,7 +597,7 @@ function renderAlerts() {
           return '<div class="item" onclick="openItem(\'' + esc(i.id) + '\')"><div class="ic">' + TYPE_META[i.type].icon + '</div><div class="mid"><div class="nm">' + esc(i.name) + ' <span class="hint">' + esc(i.id) + '</span></div>' +
             '<div class="why" style="color:var(--' + g.cls + ')">' + esc(g.why(i)) + '</div><div class="sub">' + esc(whereText(i)) + '</div></div>' + statusBadge(i) + '</div>';
         }).join('') + '</div>';
-    }).join('');
+    }).join('') + notifCard();
 }
 
 function renderActivity() {
@@ -612,9 +617,7 @@ function renderAdmin() {
     '<div class="card"><h2>➕ Equipment</h2><div class="row"><button class="btn" onclick="editItemForm()">Add item</button><button class="btn ghost" onclick="stickerPicker()">🖨 QR stickers</button></div></div>' +
     (retired.length ? '<div class="card"><h2>⏸ Inactive items (' + retired.length + ')</h2><div class="hint" style="margin-bottom:6px">Hidden from the dashboard. Tap one to activate it again.</div>' + retired.map(itemRow).join('') + '</div>' : '') +
     '<div class="card"><h2>👥 Members</h2><div id="mem"><div class="spinner"></div></div><button class="btn ghost" style="margin-top:10px" onclick="memberForm()">Add member</button></div>' +
-    '<div class="card"><h2>🔔 App notifications</h2><div class="hint" style="margin-bottom:10px">Get a phone notification when an item expires, goes Out of Service, needs attention or goes missing. Works while the app is open or in the background (emails still go out as well).</div>' +
-    (notifOn() ? '<div class="row"><button class="btn ghost" onclick="testNotif()">Send test</button><button class="btn ghost" style="color:var(--bad)" onclick="setNotif(false)">Turn off</button></div>'
-      : '<button class="btn" onclick="setNotif(true)">🔔 Turn on notifications</button>') + '</div>' +
+    notifCard() +
     '<div class="card"><h2>Account</h2><div class="hint" style="margin-bottom:10px">Backend: ' + esc(API_URL.slice(0, 60)) + '…</div><button class="btn ghost" onclick="logout()">Log out</button></div>';
   loadMembers();
 }
