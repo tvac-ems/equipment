@@ -1,0 +1,673 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#1b2a6b">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="TVAC Equip">
+<link rel="manifest" href="manifest.json">
+<link rel="icon" href="icon-192.png">
+<link rel="apple-touch-icon" href="icon-192.png">
+<title>TVAC Equipment</title>
+<style>
+:root{
+  --red:#c8102e;--navy:#1b2a6b;--bg:#f3f4f6;--card:#fff;--text:#111827;--text2:#6b7280;--border:#e5e7eb;
+  --ok:#15803d;--okbg:#e8f5e9;--warn:#b45309;--warnbg:#fff4e0;--bad:#b91c1c;--badbg:#fdecea;--blue:#1b2a6b;
+}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{margin:0;background:var(--bg);color:var(--text);font:15px/1.4 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif}
+button,input,select,textarea{font:inherit}
+.hidden{display:none!important}
+header{position:sticky;top:0;z-index:50;background:var(--navy);border-bottom:3px solid var(--red);color:#fff;padding:calc(env(safe-area-inset-top) + 10px) 16px 10px;display:flex;align-items:center;gap:10px;box-shadow:0 2px 6px rgba(0,0,0,.15)}
+header .logo{width:38px;height:38px;border-radius:50%;background:#fff;object-fit:contain}
+header h1{font-size:17px;margin:0;flex:1;line-height:1.1}
+header h1 small{display:block;font-size:12px;font-weight:500;opacity:.85}
+header button{background:rgba(255,255,255,.18);color:#fff;border:0;border-radius:8px;padding:7px 10px;font-weight:600;cursor:pointer}
+main{max-width:640px;margin:0 auto;padding:14px 14px 100px}
+.card{background:var(--card);border-radius:14px;padding:14px;margin-bottom:12px;box-shadow:0 1px 3px rgba(0,0,0,.06)}
+.card h2{font-size:15px;margin:0 0 10px}
+.btn{display:block;width:100%;border:0;border-radius:12px;padding:14px;font-weight:700;font-size:16px;cursor:pointer;background:var(--blue);color:#fff}
+.btn.red{background:var(--red)}.btn.green{background:var(--ok)}.btn.ghost{background:#eef1f5;color:var(--text)}.btn.sm{padding:9px 12px;font-size:14px;width:auto;display:inline-block}
+.btn:disabled{opacity:.5}
+.row{display:flex;gap:10px}.row>*{flex:1}
+label{display:block;font-size:13px;font-weight:600;color:var(--text2);margin:10px 0 4px}
+input,select,textarea{width:100%;padding:12px;border:1.5px solid var(--border);border-radius:10px;background:#fff;color:var(--text);font-size:16px}
+input:focus,select:focus,textarea:focus{outline:none;border-color:var(--blue)}
+textarea{min-height:70px;resize:vertical}
+.tiles{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:12px}
+.tile{background:var(--card);border-radius:12px;padding:10px;text-align:center;box-shadow:0 1px 3px rgba(0,0,0,.06);cursor:pointer;border:2px solid transparent}
+.tile.active{border-color:var(--navy)}
+.tile .ic{font-size:22px}.tile .n{font-size:20px;font-weight:800}.tile .l{font-size:11px;color:var(--text2);font-weight:600}
+.tile .sub{font-size:11px;margin-top:2px}
+.glance{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin-top:8px}
+.gl{border-radius:10px;padding:8px 4px;text-align:center;cursor:pointer;border:2px solid transparent}
+.gl.active{border-color:var(--navy)}
+.gl .n{font-size:22px;font-weight:900;line-height:1.1}.gl .l{font-size:11px;font-weight:700}
+.gl.av{background:var(--okbg);color:var(--ok)}.gl.as{background:#e6ecfa;color:var(--navy)}.gl.os{background:var(--badbg);color:var(--bad)}.gl.na{background:#eceef1;color:#4b5563}
+.who{display:flex;justify-content:space-between;gap:8px;font-size:13px;padding:6px 0;border-top:1px solid var(--border);cursor:pointer}
+.who b{font-weight:700}
+.scan-btn{display:flex;align-items:center;gap:12px;background:var(--red);color:#fff;border-radius:14px;padding:16px;margin-bottom:12px;cursor:pointer;border:0;width:100%;text-align:left;font-weight:700;font-size:17px}
+.scan-btn span.big{font-size:28px}
+.chips{display:flex;gap:6px;overflow-x:auto;margin-bottom:10px;padding-bottom:2px}
+.chip{flex:none;border:1.5px solid var(--border);background:#fff;border-radius:20px;padding:6px 12px;font-size:13px;font-weight:600;cursor:pointer}
+.chip.on{background:var(--blue);border-color:var(--blue);color:#fff}
+.item{display:flex;align-items:center;gap:10px;padding:11px 4px;border-bottom:1px solid var(--border);cursor:pointer}
+.item:last-child{border-bottom:0}
+.item.oos{background:var(--badbg);border-left:4px solid var(--bad);border-radius:8px;padding-left:8px;margin:4px 0}
+.item.oos .nm{color:var(--bad)}
+.oos-banner{background:var(--bad);color:#fff;border-radius:12px;padding:14px;margin-bottom:10px;text-align:center}
+.oos-banner .big{font-size:22px;font-weight:900;letter-spacing:.5px}
+.oos-banner .why{font-size:14px;margin-top:4px;opacity:.95}
+.na-banner{background:#4b5563}
+.item .ic{font-size:22px;width:30px;text-align:center}
+.item .mid{flex:1;min-width:0}.item .nm{font-weight:700}.item .sub{font-size:12px;color:var(--text2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.badge{display:inline-block;font-size:12px;font-weight:700;padding:3px 9px;border-radius:12px;white-space:nowrap}
+.b-in{background:var(--okbg);color:var(--ok)}.b-out{background:var(--badbg);color:var(--bad)}.b-asg{background:#e6ecfa;color:var(--navy)}.b-na{background:#eceef1;color:#4b5563}
+.b-warn{background:var(--warnbg);color:var(--warn)}.b-bad{background:var(--badbg);color:var(--bad)}.b-ok{background:var(--okbg);color:var(--ok)}
+.flag{display:flex;gap:8px;align-items:flex-start;padding:8px 10px;border-radius:10px;margin-bottom:6px;font-size:13px;font-weight:600}
+.flag.warn{background:var(--warnbg);color:var(--warn)}.flag.bad{background:var(--badbg);color:var(--bad)}
+.dot{width:9px;height:9px;border-radius:50%;flex:none}.dot.warn{background:#f59e0b}.dot.bad{background:#dc2626}
+.kv{display:grid;grid-template-columns:auto 1fr;gap:6px 14px;font-size:14px}.kv div:nth-child(odd){color:var(--text2);font-weight:600}
+.checks .ck{display:flex;align-items:center;gap:10px;padding:10px 4px;border-bottom:1px solid var(--border);font-weight:600}
+.checks .ck input{width:24px;height:24px;flex:none;accent-color:var(--ok)}
+.hint{font-size:12px;color:var(--text2);margin-top:4px}
+.log{font-size:13px;border-left:3px solid var(--border);padding:4px 0 8px 10px;margin-left:4px}
+.log b{font-weight:700}.log .t{color:var(--text2);font-size:12px}
+.tabs{position:fixed;bottom:0;left:0;right:0;background:#fff;border-top:1px solid var(--border);display:flex;padding-bottom:env(safe-area-inset-bottom);z-index:40}
+.tabs button{flex:1;border:0;background:none;padding:10px 0 8px;font-size:11px;font-weight:600;color:var(--text2);cursor:pointer}
+.tabs button .i{display:block;font-size:20px}.tabs button.on{color:var(--navy)}
+.modal{position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:100;display:flex;align-items:flex-end;justify-content:center}
+.sheet{background:#fff;width:100%;max-width:640px;max-height:92vh;overflow-y:auto;border-radius:18px 18px 0 0;padding:16px 16px calc(16px + env(safe-area-inset-bottom))}
+.sheet h3{margin:0 0 6px;font-size:18px}
+.toast{position:fixed;left:50%;bottom:90px;transform:translateX(-50%);background:#111;color:#fff;padding:12px 18px;border-radius:12px;font-weight:600;z-index:200;max-width:90vw;text-align:center}
+#login{min-height:100vh;display:flex;align-items:center;justify-content:center;padding:20px;background:var(--navy)}
+#login .card{width:100%;max-width:360px;text-align:center;padding:26px 20px}
+#login .logo{width:110px;height:110px;object-fit:contain;display:block;margin:0 auto 12px}
+#pin{text-align:center;font-size:26px;letter-spacing:8px}
+#scanner{position:fixed;inset:0;background:#000;z-index:150;display:flex;flex-direction:column}
+#scanner video{flex:1;width:100%;object-fit:cover}
+#scanner .frame{position:absolute;top:50%;left:50%;width:240px;height:240px;transform:translate(-50%,-60%);border:3px solid #fff;border-radius:18px;box-shadow:0 0 0 9999px rgba(0,0,0,.35)}
+#scanner .bar{padding:16px 16px calc(16px + env(safe-area-inset-bottom));background:#000}
+.spinner{width:28px;height:28px;border:3px solid #ddd;border-top-color:var(--navy);border-radius:50%;animation:sp 0.8s linear infinite;margin:30px auto}
+@keyframes sp{to{transform:rotate(360deg)}}
+.o2calc{background:#eef4fb;color:var(--blue);border-radius:10px;padding:8px 10px;font-size:13px;font-weight:600;margin-top:6px}
+/* print stickers */
+#print-area{display:none}
+@media print{
+  body *{visibility:hidden}
+  #print-area,#print-area *{visibility:visible}
+  #print-area{display:grid!important;position:absolute;left:0;top:0;grid-template-columns:repeat(3,1fr);gap:8px;width:100%}
+  .stk{border:2px solid #1b2a6b;border-radius:10px;padding:8px;text-align:center;break-inside:avoid;page-break-inside:avoid}
+  .stk .h{display:flex;align-items:center;justify-content:center;gap:5px;background:#1b2a6b;color:#fff;font-weight:800;font-size:11px;border-radius:5px;padding:3px;margin-bottom:4px;border-bottom:2px solid #c8102e}.stk .h img{width:20px;height:20px;border-radius:50%;background:#fff}
+  .stk img{width:100%;max-width:150px}
+  .stk .n{font-weight:800;font-size:13px}.stk .id{font-size:12px;font-weight:700;color:#c8102e}
+  .stk .f{font-size:9px;color:#444}
+}
+</style>
+</head>
+<body>
+
+<!-- LOGIN -->
+<div id="login" class="hidden">
+  <div class="card">
+    <img class="logo" src="logo.png" alt="TVAC">
+    <div style="font-size:20px;font-weight:800">TVAC Equipment</div>
+    <div style="font-size:12px;color:var(--text2)">Teaneck Volunteer Ambulance Corps</div>
+    <div id="login-sub" style="color:var(--text2);font-size:14px;margin:4px 0 16px">Enter your PIN</div>
+    <input id="pin" type="password" inputmode="numeric" autocomplete="off" placeholder="••••">
+    <div id="login-err" style="color:var(--bad);font-size:13px;height:20px;margin:6px 0"></div>
+    <button class="btn red" onclick="doLogin()">Enter</button>
+  </div>
+</div>
+
+<!-- APP -->
+<div id="app" class="hidden">
+  <header>
+    <img class="logo" src="logo.png" alt="">
+    <h1>TVAC Equipment<small id="who"></small></h1>
+    <button onclick="refresh()" id="sync">⟳</button>
+  </header>
+  <main id="view"></main>
+  <nav class="tabs">
+    <button data-tab="home" onclick="go('home')"><span class="i">🏠</span>Home</button>
+    <button onclick="openScanner()"><span class="i">📷</span>Scan</button>
+    <button data-tab="activity" onclick="go('activity')"><span class="i">🕘</span>Activity</button>
+    <button data-tab="admin" id="tab-admin" onclick="go('admin')"><span class="i">⚙️</span>Admin</button>
+  </nav>
+</div>
+
+<div id="modal-root"></div>
+<div id="print-area"></div>
+
+<script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcode-generator/1.4.4/qrcode.min.js"></script>
+<script>
+// ════════ CONFIG ════════
+// Paste the Apps Script web-app /exec URL here (update when redeploying under the TVAC account).
+var API_URL = 'PASTE_APPS_SCRIPT_EXEC_URL_HERE';
+// URL encoded into QR stickers (this page). Auto-detected; override if hosting elsewhere.
+// Single home base for all equipment (items return here on Check IN).
+var HOME_LOCATION = 'TVAC Building';
+var APP_URL = location.origin + location.pathname.replace(/index\.html$/, '');
+
+var TYPE_META = {
+  'First Responder Bag': { icon: '🎒', short: 'FR Bags', checks: ['Seal intact', 'BP cuff & stethoscope', 'Airway adjuncts (OPA/NPA)', 'BVM (adult & peds)', 'Bleeding control / tourniquet', 'Gloves & PPE', 'Glucometer & supplies', 'Pulse oximeter'] },
+  'Oxygen Tank':         { icon: '🫁', short: 'O2 Tanks', checks: ['Regulator attached & working', 'No leaks', 'O-ring / washer present', 'Cylinder undamaged', 'Stored / secured properly'] },
+  'AED':                 { icon: '⚡', short: 'AEDs',    checks: ['Status indicator OK', 'Adult pads present & sealed', 'Peds pads present', 'Razor, scissors, towel', 'Unit & case undamaged'] }
+};
+var TYPES = Object.keys(TYPE_META);
+var O2_FACTORS = { 'D': 0.16, 'Jumbo D': 0.2, 'E': 0.28, 'M': 1.56, 'G': 2.41, 'H/K': 3.14 };
+var CONDITIONS = ['OK', 'Needs Attention', 'Out of Service'];
+var STATUS_META = {
+  'Available':      { cls: 'b-in',  short: 'Available',  icon: '✅' },
+  'Assigned':       { cls: 'b-asg', short: 'Assigned',   icon: '👤' },
+  'Out of Service': { cls: 'b-bad', short: 'Out of Svc', icon: '⛔' },
+  'Not Available':  { cls: 'b-na',  short: 'Not Avail.', icon: '❓' }
+};
+var STATUSES = Object.keys(STATUS_META);
+function statusBadge(i) { var m = STATUS_META[i.status] || STATUS_META['Available']; return '<span class="badge ' + m.cls + '">' + m.short + '</span>'; }
+function whereText(i) { return i.status === 'Assigned' ? '👤 ' + (i.location || '—') : i.status === 'Not Available' ? '❓ Not in location' : '📍 ' + (i.location || i.homeLocation || '—'); }
+
+// ════════ STATE ════════
+var S = { pin: null, member: null, items: [], cfg: {}, filter: 'All', q: '', tab: 'home', pendingId: null };
+function store(k, v) { try { if (v === undefined) return localStorage.getItem(k); if (v === null) localStorage.removeItem(k); else localStorage.setItem(k, v); } catch (e) { return null; } }
+
+// ════════ API ════════
+function apiGet(params) {
+  var u = API_URL + '?' + Object.keys(params).map(function (k) { return k + '=' + encodeURIComponent(params[k]); }).join('&');
+  return fetch(u, { redirect: 'follow', credentials: 'omit' }).then(function (r) { return r.json(); }).then(chk);
+}
+function apiPost(body) {
+  body.pin = S.pin;
+  return fetch(API_URL, { method: 'POST', redirect: 'follow', credentials: 'omit', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify(body) })
+    .then(function (r) { return r.json(); }).then(chk);
+}
+function chk(d) {
+  if (!d || !d.ok) {
+    var msg = (d && d.error) || 'Request failed';
+    if (/Not authorized/.test(msg)) logout();
+    throw new Error(msg);
+  }
+  return d;
+}
+
+// ════════ UTIL ════════
+function $(id) { return document.getElementById(id); }
+function esc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
+function toast(msg, ms) { var t = document.createElement('div'); t.className = 'toast'; t.textContent = msg; document.body.appendChild(t); setTimeout(function () { t.remove(); }, ms || 2500); }
+function ago(ts) {
+  if (!ts) return '—';
+  var d = new Date(ts), s = (Date.now() - d) / 1000;
+  if (s < 60) return 'just now'; if (s < 3600) return Math.floor(s / 60) + 'm ago'; if (s < 86400) return Math.floor(s / 3600) + 'h ago';
+  if (s < 86400 * 7) return Math.floor(s / 86400) + 'd ago';
+  return d.toLocaleDateString();
+}
+function fmtTs(ts) { if (!ts) return '—'; var d = new Date(ts); return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' }) + ' ' + d.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' }); }
+function worst(flags) { if (!flags || !flags.length) return null; return flags.some(function (f) { return f.level === 'bad'; }) ? 'bad' : 'warn'; }
+function isAdmin() { return S.member && S.member.role === 'admin'; }
+function getItem(id) { return S.items.find(function (i) { return i.id.toUpperCase() === String(id).toUpperCase(); }); }
+function o2Minutes(psi, size, lpm) { var f = O2_FACTORS[size]; if (!f || !psi) return null; return Math.max(0, Math.floor((psi - 200) * f / (lpm || 15))); }
+function locations() {
+  var set = {};
+  S.items.forEach(function (i) { if (i.homeLocation) set[i.homeLocation] = 1; if (i.location) set[i.location] = 1; });
+  return Object.keys(set).sort();
+}
+
+// ════════ AUTH ════════
+function doLogin() {
+  var p = $('pin').value.trim(); if (!p) return;
+  $('login-err').textContent = '';
+  apiGet({ action: 'login', pin: p }).then(function (d) {
+    S.pin = p; S.member = d.member; store('tvac_pin', p); store('tvac_member', JSON.stringify(d.member));
+    startApp();
+  }).catch(function (e) { $('login-err').textContent = '✕ ' + e.message; $('pin').value = ''; $('pin').focus(); });
+}
+function logout() {
+  store('tvac_pin', null); store('tvac_member', null); S.pin = null; S.member = null;
+  $('app').classList.add('hidden'); $('login').classList.remove('hidden'); $('pin').value = '';
+}
+function startApp() {
+  $('login').classList.add('hidden'); $('app').classList.remove('hidden');
+  $('who').textContent = S.member.name + ' · #' + S.member.id;
+  $('tab-admin').classList.toggle('hidden', !isAdmin());
+  refresh().then(function () {
+    if (S.pendingId) { var id = S.pendingId; S.pendingId = null; openItem(id); }
+  });
+}
+
+// ════════ DATA ════════
+function refresh() {
+  $('sync').textContent = '…';
+  return apiGet({ action: 'getInventory', pin: S.pin }).then(function (d) {
+    S.items = d.items; S.cfg = d.config || {};
+    $('sync').textContent = '⟳';
+    render();
+  }).catch(function (e) { $('sync').textContent = '⟳'; toast('⚠ ' + e.message); if (S.tab === 'home') render(); });
+}
+
+// ════════ ROUTER ════════
+function go(tab) { S.tab = tab; history.replaceState(null, '', APP_URL + (tab === 'home' ? '' : '?tab=' + tab)); render(); window.scrollTo(0, 0); }
+function render() {
+  document.querySelectorAll('.tabs button[data-tab]').forEach(function (b) { b.classList.toggle('on', b.dataset.tab === S.tab); });
+  if (S.tab === 'home') renderHome();
+  else if (S.tab === 'activity') renderActivity();
+  else if (S.tab === 'admin') renderAdmin();
+}
+
+// ════════ HOME ════════
+function renderHome() {
+  var active = S.items.filter(function (i) { return i.active; });
+  var tiles = TYPES.map(function (t) {
+    var list = active.filter(function (i) { return i.type === t; });
+    var cnt = function (st) { return list.filter(function (i) { return i.status === st; }).length; };
+    var av = cnt('Available'), asg = cnt('Assigned'), oos = cnt('Out of Service') + cnt('Not Available');
+    return '<div class="tile' + (S.filter === t ? ' active' : '') + '" onclick="setFilter(\'' + t + '\')">' +
+      '<div class="ic">' + TYPE_META[t].icon + '</div><div class="n">' + list.length + '</div><div class="l">' + TYPE_META[t].short + '</div>' +
+      '<div class="sub"><span style="color:var(--ok)">' + av + ' avail</span>' + (asg ? ' · <span style="color:var(--navy)">' + asg + ' asg</span>' : '') +
+      (oos ? ' · <span style="color:var(--bad)">' + oos + ' ⛔</span>' : '') + '</div></div>';
+  }).join('');
+
+  var flagged = active.filter(function (i) { return i.flags.length; })
+    .sort(function (a, b) { return (worst(b.flags) === 'bad') - (worst(a.flags) === 'bad'); });
+  var alerts = flagged.length ? '<div class="card"><h2>⚠ Needs attention (' + flagged.length + ')</h2>' +
+    flagged.slice(0, 6).map(function (i) {
+      return '<div class="flag ' + worst(i.flags) + '" style="cursor:pointer" onclick="openItem(\'' + esc(i.id) + '\')"><span>' + TYPE_META[i.type].icon + '</span><span><b>' + esc(i.name) + '</b> — ' + i.flags.map(function (f) { return esc(f.text); }).join(' · ') + '</span></div>';
+    }).join('') + (flagged.length > 6 ? '<div class="hint" style="cursor:pointer" onclick="setFilter(\'Flagged\')">+ ' + (flagged.length - 6) + ' more — tap to view</div>' : '') + '</div>' : '';
+
+  var chips = ['All', 'Mine'].concat(STATUSES, ['Flagged'], TYPES).map(function (c) {
+    var lbl = TYPE_META[c] ? TYPE_META[c].short : c === 'Mine' ? 'My items' : c;
+    return '<button class="chip' + (S.filter === c ? ' on' : '') + '" onclick="setFilter(\'' + c + '\')">' + lbl + '</button>';
+  }).join('');
+
+  $('view').innerHTML =
+    '<button class="scan-btn" onclick="openScanner()"><span class="big">📷</span><span>Scan QR code<br><span style="font-size:13px;font-weight:500;opacity:.9">Sign out, sign in, or inspect</span></span></button>' +
+    glanceHtml(active) + '<div class="tiles">' + tiles + '</div>' + alerts +
+    '<div class="card"><input id="q" placeholder="🔍  Search name, ID, location…" value="' + esc(S.q) + '" oninput="S.q=this.value;renderList()" style="margin-bottom:10px">' +
+    '<div class="chips">' + chips + '</div><div id="list"></div></div>';
+  renderList();
+}
+function glanceHtml(active) {
+  var c = function (st) { return active.filter(function (i) { return i.status === st; }).length; };
+  var box = function (st, cls, lbl) { return '<div class="gl ' + cls + (S.filter === st ? ' active' : '') + '" onclick="setFilter(\'' + st + '\')"><div class="n">' + c(st) + '</div><div class="l">' + lbl + '</div></div>'; };
+  var asg = active.filter(function (i) { return i.status === 'Assigned'; });
+  var by = {};
+  asg.forEach(function (i) { (by[i.location] = by[i.location] || []).push(i); });
+  var who = Object.keys(by).sort().map(function (k) {
+    return '<div class="who" onclick="setFilter(\'Assigned\')"><b>👤 ' + esc(k) + '</b><span>' + by[k].map(function (i) { return esc(i.name); }).join(', ') + '</span></div>';
+  }).join('');
+  return '<div class="card"><h2 style="margin-bottom:0">At a glance <span class="hint" style="font-weight:500">· ' + active.length + ' items</span></h2>' +
+    '<div class="glance">' + box('Available', 'av', 'Available') + box('Assigned', 'as', 'Assigned') + box('Out of Service', 'os', 'Out of Svc') + box('Not Available', 'na', 'Not Avail.') + '</div>' +
+    (who ? '<div style="margin-top:10px"><div class="hint" style="font-weight:700;margin-bottom:2px">Who has what</div>' + who + '</div>' : '') + '</div>';
+}
+function setFilter(f) { S.filter = S.filter === f ? 'All' : f; renderHome(); }
+function renderList() {
+  var q = S.q.toLowerCase().trim();
+  var list = S.items.filter(function (i) {
+    if (!i.active) return false;
+    if (STATUS_META[S.filter] && i.status !== S.filter) return false;
+    if (S.filter === 'Mine' && !(i.status === 'Assigned' && String(i.lastMember) === String(S.member.id))) return false;
+    if (S.filter === 'Flagged' && !i.flags.length) return false;
+    if (TYPE_META[S.filter] && i.type !== S.filter) return false;
+    if (q && (i.name + ' ' + i.id + ' ' + i.location + ' ' + i.homeLocation + ' ' + i.serial).toLowerCase().indexOf(q) < 0) return false;
+    return true;
+  }).sort(function (a, b) { return a.type.localeCompare(b.type) || a.id.localeCompare(b.id, undefined, { numeric: true }); });
+  $('list').innerHTML = list.length ? list.map(itemRow).join('') : '<div class="hint" style="text-align:center;padding:20px">' + (S.items.length ? 'No matching items' : 'No equipment yet' + (isAdmin() ? ' — add items in Admin' : '')) + '</div>';
+}
+function itemRow(i) {
+  var w = worst(i.flags);
+  var extra = i.type === 'Oxygen Tank' && i.psi !== '' ? ' · ' + i.psi + ' PSI' : i.type === 'First Responder Bag' && i.seal ? ' · Seal ' + esc(i.seal) : '';
+  return '<div class="item' + (i.status === 'Out of Service' ? ' oos' : '') + '" onclick="openItem(\'' + esc(i.id) + '\')"><div class="ic">' + TYPE_META[i.type].icon + '</div>' +
+    '<div class="mid"><div class="nm">' + esc(i.name) + ' ' + (w ? '<span class="dot ' + w + '" style="display:inline-block"></span>' : '') + '</div>' +
+    '<div class="sub">' + esc(i.id) + ' · ' + esc(whereText(i)) + extra + '</div></div>' + statusBadge(i) + '</div>';
+}
+
+// ════════ ITEM DETAIL ════════
+function openItem(id) {
+  var local = getItem(id);
+  showModal('<div class="spinner"></div>');
+  apiGet({ action: 'getItem', id: id, pin: S.pin }).then(function (d) {
+    var idx = S.items.findIndex(function (i) { return i.id === d.item.id; });
+    if (idx >= 0) S.items[idx] = d.item; else S.items.push(d.item);
+    showModal(itemHtml(d.item, d.log));
+  }).catch(function (e) {
+    if (local) showModal(itemHtml(local, null)); else { closeModal(); toast('⚠ ' + e.message); }
+  });
+}
+function itemHtml(i, log) {
+  var m = TYPE_META[i.type], out = i.status === 'Assigned';
+  var kv = [['ID', esc(i.id)], ['Status', statusBadge(i)],
+    [out ? 'Assigned to' : 'Location', esc(out ? i.location : i.status === 'Not Available' ? 'Not in location' : (i.location || i.homeLocation || '—'))], ['Home', esc(i.homeLocation || '—')],
+    ['Condition', '<span class="badge ' + (i.condition === 'OK' ? 'b-ok' : i.condition === 'Out of Service' ? 'b-bad' : 'b-warn') + '">' + esc(i.condition) + '</span>']];
+  if (i.type === 'First Responder Bag') kv.push(['Seal #', esc(i.seal || '—')]);
+  if (i.type === 'Oxygen Tank') {
+    var mins = o2Minutes(i.psi, i.o2Size, 15);
+    kv.push(['Size', esc(i.o2Size || '—')], ['Pressure', i.psi !== '' ? i.psi + ' PSI' + (mins !== null ? ' <span class="hint">(≈' + mins + ' min @15 LPM)</span>' : '') : '—'], ['Hydro test', esc(i.hydroDate ? i.hydroDate.slice(0, 7) : '—')]);
+  }
+  if (i.type === 'AED') kv.push(['Model', esc(i.aedModel || '—')], ['Serial', esc(i.serial || '—')], ['Adult pads exp', esc(i.padsExp || '—')], ['Peds pads exp', esc(i.pedsPadsExp || '—')], ['Battery exp', esc(i.batteryExp || '—')]);
+  kv.push(['Last inspected', i.lastInspected ? fmtTs(i.lastInspected) : 'Never'], ['Last activity', ago(i.lastUpdated) + (i.lastMember ? ' · #' + esc(i.lastMember) : '')]);
+  if (i.notes) kv.push(['Notes', esc(i.notes)]);
+
+  var banner = i.status === 'Out of Service' ? '<div class="oos-banner"><div class="big">⛔ OUT OF SERVICE</div><div class="why">DO NOT USE' + (i.statusNote ? ' — ' + esc(i.statusNote) : '') + '</div></div>'
+    : i.status === 'Not Available' ? '<div class="oos-banner na-banner"><div class="big">❓ NOT IN LOCATION</div>' + (i.statusNote ? '<div class="why">' + esc(i.statusNote) + '</div>' : '') + '</div>' : '';
+  var flags = i.flags.filter(function (f) { return f.text !== 'Out of Service' && f.text !== 'Not Available / missing'; })
+    .map(function (f) { return '<div class="flag ' + f.level + '">⚠ ' + esc(f.text) + '</div>'; }).join('');
+  var hist = log ? (log.length ? log.map(logRow).join('') : '<div class="hint">No history yet</div>') : '<div class="hint">History unavailable offline</div>';
+  var inactive = !i.active ? '<div class="flag bad">This item is retired</div>' : '';
+
+  return '<div style="display:flex;align-items:center;gap:10px;margin-bottom:8px"><span style="font-size:30px">' + m.icon + '</span>' +
+    '<div style="flex:1"><h3>' + esc(i.name) + '</h3><div class="hint" style="margin:0">' + esc(i.type) + '</div></div>' +
+    '<button class="btn ghost sm" onclick="closeModal()">✕</button></div>' + inactive + banner + flags +
+    (i.active ? '<div class="row" style="margin:12px 0">' +
+      (out ? '<button class="btn green" onclick="actionForm(\'' + esc(i.id) + '\',\'IN\')">✓ Sign IN</button>'
+           : i.status === 'Out of Service' ? '<button class="btn green" onclick="statusForm(\'' + esc(i.id) + '\',\'Available\')">✓ Back in service</button>'
+           : '<button class="btn red" onclick="actionForm(\'' + esc(i.id) + '\',\'OUT\')">↗ Sign OUT</button>') +
+      '<button class="btn" onclick="inspectForm(\'' + esc(i.id) + '\')">📋 Inspect</button></div>' +
+      '<div class="row" style="margin-bottom:12px">' +
+      (i.status !== 'Out of Service' ? '<button class="btn ghost sm" style="width:100%" onclick="statusForm(\'' + esc(i.id) + '\',\'Out of Service\')">⛔ Out of Service</button>' : '') +
+      (i.status === 'Not Available' ? '<button class="btn ghost sm" style="width:100%" onclick="statusForm(\'' + esc(i.id) + '\',\'Available\')">✅ Found — Available</button>'
+        : '<button class="btn ghost sm" style="width:100%" onclick="statusForm(\'' + esc(i.id) + '\',\'Not Available\')">❓ Not in location</button>') +
+      '</div>' : '') +
+    '<div class="card" style="box-shadow:none;border:1px solid var(--border)"><div class="kv">' + kv.map(function (p) { return '<div>' + p[0] + '</div><div>' + p[1] + '</div>'; }).join('') + '</div></div>' +
+    (isAdmin() ? '<div class="row" style="margin-bottom:12px"><button class="btn ghost" onclick="editItemForm(\'' + esc(i.id) + '\')">✏️ Edit</button><button class="btn ghost" onclick="printStickers([\'' + esc(i.id) + '\'])">🖨 QR Sticker</button></div>' : '') +
+    '<h2 style="font-size:15px;margin:6px 0 8px">History</h2>' + hist;
+}
+function logRow(l) {
+  var col = { 'SIGNED OUT': 'var(--navy)', OUT: 'var(--navy)', 'SIGNED IN': 'var(--ok)', IN: 'var(--ok)', AVAILABLE: 'var(--ok)', INSPECTED: 'var(--blue)', 'OUT OF SERVICE': 'var(--bad)', 'NOT AVAILABLE': 'var(--text2)' }[l.action] || 'var(--text2)';
+  return '<div class="log" style="border-color:' + col + '"><b style="color:' + col + '">' + esc(l.action) + '</b> ' +
+    (l.location ? '· ' + esc(l.location) + ' ' : '') + (l.call ? '· Call ' + esc(l.call) + ' ' : '') +
+    (l.condition && l.condition !== 'OK' ? '· <span style="color:var(--warn)">' + esc(l.condition) + '</span>' : '') +
+    '<div class="t">' + fmtTs(l.ts) + ' · ' + esc(l.member) + '</div>' +
+    (l.details ? '<div class="t">' + esc(l.details) + '</div>' : '') + (l.notes ? '<div class="t">📝 ' + esc(l.notes) + '</div>' : '') + '</div>';
+}
+
+// ════════ CHECK IN / OUT ════════
+function actionForm(id, status) {
+  var i = getItem(id), out = status === 'OUT';
+  var dl = '<datalist id="locs">' + locations().map(function (l) { return '<option value="' + esc(l) + '">'; }).join('') + '</datalist>';
+  var extra = '';
+  if (out) extra = '';
+  else if (i.type === 'Oxygen Tank') extra = '<label>Pressure now (PSI, optional)</label><input id="f-psi" type="number" inputmode="numeric" placeholder="e.g. 2000" value="' + (i.psi !== '' ? i.psi : '') + '" oninput="o2Hint(\'' + esc(i.o2Size || '') + '\')"><div id="o2h"></div>';
+  else if (i.type === 'First Responder Bag') extra = '<label>Used / needs restock (optional)</label><input id="f-used" placeholder="e.g. 2 NPA, gauze">';
+  else if (i.type === 'AED') extra = '<div class="checks"><label class="ck"><input type="checkbox" id="f-padsused"> Pads were used (replace)</label></div>';
+
+  showModal('<h3>' + (out ? '↗ Sign OUT' : '✓ Sign IN') + ' — ' + esc(i.name) + '</h3><div class="hint">' + esc(i.id) + '</div>' +
+    '<div class="o2calc" style="margin-top:10px">👤 ' + (out ? 'Signing out to ' : 'Returned by ') + esc(S.member.name) + ' (#' + esc(S.member.id) + ')</div>' +
+    extra +
+    (!out ? '<label>Condition</label><select id="f-cond">' + CONDITIONS.map(function (c) { return '<option' + (c === i.condition ? ' selected' : '') + '>' + c + '</option>'; }).join('') + '</select>' : '') +
+    (out ? '<input id="f-notes" type="hidden" value="">' : '<label>Notes (optional)</label><textarea id="f-notes"></textarea>') +
+    '<div class="row" style="margin-top:14px"><button class="btn ghost" onclick="openItem(\'' + esc(id) + '\')">Back</button><button class="btn ' + (out ? 'red' : 'green') + '" id="f-go" onclick="submitAction(\'' + esc(id) + '\',\'' + status + '\')">' + (out ? 'Sign OUT' : 'Sign IN') + '</button></div>');
+  if ($('f-psi')) o2Hint(i.o2Size || '');
+}
+function o2Hint(size) {
+  var el = $('o2h'); if (!el) return;
+  var psi = Number($('f-psi').value), mins = o2Minutes(psi, size, 15);
+  var low = S.cfg.LOW_PSI || 1000, empty = S.cfg.EMPTY_PSI || 500;
+  var warn = psi && psi <= empty ? ' <span style="color:var(--bad)">— needs refill</span>' : psi && psi <= low ? ' <span style="color:var(--warn)">— low</span>' : '';
+  el.innerHTML = psi ? '<div class="o2calc">' + (mins !== null ? '≈ ' + mins + ' min @ 15 LPM · ' + Math.floor(mins * 15 / 2) + ' min @ 2 LPM' : 'Set tank size to see duration') + warn + '</div>' : '';
+}
+function submitAction(id, status) {
+  var i = getItem(id);
+  var b = { action: 'checkInOut', id: id, status: status, notes: $('f-notes').value.trim() };
+  if ($('f-call')) b.call = $('f-call').value.trim();
+  if ($('f-psi') && $('f-psi').value !== '') b.psi = Number($('f-psi').value);
+  if ($('f-seal') && $('f-seal').value.trim()) b.seal = $('f-seal').value.trim();
+  if ($('f-used') && $('f-used').value.trim()) b.used = $('f-used').value.trim();
+  if ($('f-cond')) b.condition = $('f-cond').value;
+  if ($('f-padsused') && $('f-padsused').checked) { b.condition = 'Needs Attention'; b.notes = ('Pads used — replace. ' + b.notes).trim(); }
+  if (i.type === 'Oxygen Tank' && status === 'IN' && b.psi !== undefined && b.psi <= (S.cfg.EMPTY_PSI || 500) && b.condition === 'OK') b.condition = 'Needs Attention';
+  busy(true);
+  apiPost(b).then(function (d) { updateLocal(d.item); closeModal(); toast((status === 'OUT' ? '↗ Signed out: ' : '✓ Signed in: ') + i.name); render(); })
+    .catch(function (e) { busy(false); toast('⚠ ' + e.message, 4000); });
+}
+
+// ════════ STATUS CHANGE ════════
+function statusForm(id, st) {
+  var i = getItem(id), need = st !== 'Available';
+  var title = { 'Out of Service': '⛔ Mark Out of Service', 'Not Available': '❓ Mark Not in Location', 'Available': '✅ Mark Available' }[st];
+  var ph = { 'Out of Service': 'e.g. Battery needs replacing, regulator leaking', 'Not Available': 'e.g. Not on shelf, last seen on rig 45-10', 'Available': 'e.g. Battery replaced / found in supply room' }[st];
+  showModal('<h3>' + title + ' — ' + esc(i.name) + '</h3><div class="hint">' + esc(i.id) + '</div>' +
+    '<label>' + (need ? 'Reason *' : 'Note (optional)') + '</label><textarea id="f-notes" placeholder="' + esc(ph) + '"></textarea>' +
+    '<div class="row" style="margin-top:14px"><button class="btn ghost" onclick="openItem(\'' + esc(id) + '\')">Back</button><button class="btn ' + (need ? 'red' : 'green') + '" id="f-go" onclick="submitStatus(\'' + esc(id) + '\',\'' + st + '\')">Save</button></div>');
+  setTimeout(function () { var n = $('f-notes'); if (n) n.focus(); }, 50);
+}
+function submitStatus(id, st) {
+  var notes = $('f-notes').value.trim();
+  if (st !== 'Available' && !notes) { toast('Enter a reason'); return; }
+  busy(true);
+  apiPost({ action: 'setStatus', id: id, status: st, notes: notes }).then(function (d) { updateLocal(d.item); closeModal(); toast('✓ ' + d.item.name + ': ' + st); render(); })
+    .catch(function (e) { busy(false); toast('⚠ ' + e.message, 4000); });
+}
+
+// ════════ INSPECTION ════════
+function inspectForm(id) {
+  var i = getItem(id), m = TYPE_META[i.type];
+  var fields = '';
+  if (i.type === 'First Responder Bag') fields = '<label>Seal #</label><input id="f-seal" value="' + esc(i.seal) + '"><label>Items used / restocked</label><input id="f-used" placeholder="Optional">';
+  if (i.type === 'Oxygen Tank') fields = '<label>Pressure (PSI) *</label><input id="f-psi" type="number" inputmode="numeric" value="' + (i.psi !== '' ? i.psi : '') + '" oninput="o2Hint(\'' + esc(i.o2Size || '') + '\')"><div id="o2h"></div>';
+  if (i.type === 'AED') fields = '<div class="row"><div><label>Adult pads exp.</label><input id="f-pads" type="date" value="' + esc(i.padsExp) + '"></div><div><label>Peds pads exp.</label><input id="f-peds" type="date" value="' + esc(i.pedsPadsExp) + '"></div></div>' +
+    '<label>Battery exp. / install date</label><input id="f-batt" type="date" value="' + esc(i.batteryExp) + '">';
+
+  showModal('<h3>📋 Inspect — ' + esc(i.name) + '</h3><div class="hint">' + esc(i.id) + ' · Tap each item as you verify it</div>' +
+    '<div class="checks" style="margin-top:8px">' + m.checks.map(function (c, n) { return '<label class="ck"><input type="checkbox" data-ck="' + esc(c) + '" onchange="autoCond()"> ' + esc(c) + '</label>'; }).join('') + '</div>' +
+    '<button class="btn ghost sm" style="margin-top:8px" onclick="document.querySelectorAll(\'[data-ck]\').forEach(function(c){c.checked=true});autoCond()">Check all</button>' +
+    fields +
+    '<label>Condition</label><select id="f-cond">' + CONDITIONS.map(function (c) { return '<option>' + c + '</option>'; }).join('') + '</select>' +
+    '<label>Notes</label><textarea id="f-notes" placeholder="Anything missing or wrong?"></textarea>' +
+    '<div class="row" style="margin-top:14px"><button class="btn ghost" onclick="openItem(\'' + esc(id) + '\')">Back</button><button class="btn" id="f-go" onclick="submitInspect(\'' + esc(id) + '\')">Save inspection</button></div>');
+  if ($('f-psi')) o2Hint(i.o2Size || '');
+  autoCond();
+}
+function autoCond() {
+  var boxes = document.querySelectorAll('[data-ck]'), all = true;
+  boxes.forEach(function (b) { if (!b.checked) all = false; });
+  var sel = $('f-cond'); if (sel && sel.value !== 'Out of Service') sel.value = all ? 'OK' : 'Needs Attention';
+}
+function submitInspect(id) {
+  var i = getItem(id);
+  var checks = {}; document.querySelectorAll('[data-ck]').forEach(function (b) { checks[b.dataset.ck] = b.checked; });
+  var b = { action: 'inspect', id: id, checks: checks, condition: $('f-cond').value, notes: $('f-notes').value.trim() };
+  if (i.type === 'Oxygen Tank') {
+    if ($('f-psi').value === '') { toast('Enter the tank pressure'); return; }
+    b.psi = Number($('f-psi').value);
+  }
+  if ($('f-seal')) b.seal = $('f-seal').value.trim();
+  if ($('f-used') && $('f-used').value.trim()) b.used = $('f-used').value.trim();
+  if ($('f-pads')) { b.padsExp = $('f-pads').value; b.pedsPadsExp = $('f-peds').value; b.batteryExp = $('f-batt').value; }
+  if (b.condition !== 'OK' && !b.notes) { toast('Add a note explaining what needs attention'); $('f-notes').focus(); return; }
+  busy(true);
+  apiPost(b).then(function (d) { updateLocal(d.item); closeModal(); toast('✓ Inspection saved'); render(); })
+    .catch(function (e) { busy(false); toast('⚠ ' + e.message, 4000); });
+}
+
+// ════════ ACTIVITY ════════
+function renderActivity() {
+  $('view').innerHTML = '<div class="card"><h2>Recent activity</h2><div id="act"><div class="spinner"></div></div></div>';
+  apiGet({ action: 'getLog', limit: 100, pin: S.pin }).then(function (d) {
+    $('act').innerHTML = d.log.length ? d.log.map(function (l) {
+      return '<div style="cursor:pointer" onclick="openItem(\'' + esc(l.id) + '\')"><div style="font-weight:700;font-size:14px;margin-top:6px">' + esc(l.name) + ' <span class="hint">' + esc(l.id) + '</span></div>' + logRow(l) + '</div>';
+    }).join('') : '<div class="hint">No activity yet</div>';
+  }).catch(function (e) { $('act').innerHTML = '<div class="hint">⚠ ' + esc(e.message) + '</div>'; });
+}
+
+// ════════ ADMIN ════════
+function renderAdmin() {
+  if (!isAdmin()) { go('home'); return; }
+  var retired = S.items.filter(function (i) { return !i.active; });
+  $('view').innerHTML =
+    '<div class="card"><h2>➕ Equipment</h2><div class="row"><button class="btn" onclick="editItemForm()">Add item</button><button class="btn ghost" onclick="stickerPicker()">🖨 QR stickers</button></div></div>' +
+    '<div class="card"><h2>👥 Members</h2><div id="mem"><div class="spinner"></div></div><button class="btn ghost" style="margin-top:10px" onclick="memberForm()">Add member</button></div>' +
+    (retired.length ? '<div class="card"><h2>Retired items</h2>' + retired.map(itemRow).join('') + '</div>' : '') +
+    '<div class="card"><h2>Account</h2><div class="hint" style="margin-bottom:10px">Backend: ' + esc(API_URL.slice(0, 60)) + '…</div><button class="btn ghost" onclick="logout()">Log out</button></div>';
+  loadMembers();
+}
+function loadMembers() {
+  apiGet({ action: 'getMembers', pin: S.pin }).then(function (d) {
+    S.members = d.members;
+    $('mem').innerHTML = d.members.map(function (m) {
+      return '<div class="item" onclick="memberForm(\'' + esc(m.id) + '\')"><div class="ic">' + (m.role === 'admin' ? '⭐' : '👤') + '</div><div class="mid"><div class="nm">' + esc(m.name) + '</div><div class="sub">#' + esc(m.id) + (m.email ? ' · ' + esc(m.email) : '') + '</div></div><span class="badge b-in">' + esc(m.role) + '</span></div>';
+    }).join('');
+  }).catch(function (e) { $('mem').innerHTML = '<div class="hint">⚠ ' + esc(e.message) + '</div>'; });
+}
+function memberForm(id) {
+  var m = id ? S.members.find(function (x) { return x.id === id; }) : { id: '', name: '', pin: '', role: 'member', email: '' };
+  showModal('<h3>' + (id ? 'Edit member' : 'Add member') + '</h3>' +
+    '<div class="row"><div><label>Member #</label><input id="m-id" value="' + esc(m.id) + '"' + (id ? ' readonly' : '') + '></div><div><label>PIN</label><input id="m-pin" inputmode="numeric" value="' + esc(m.pin) + '"></div></div>' +
+    '<label>Name</label><input id="m-name" value="' + esc(m.name) + '">' +
+    '<label>Role</label><select id="m-role"><option value="member"' + (m.role !== 'admin' ? ' selected' : '') + '>Member</option><option value="admin"' + (m.role === 'admin' ? ' selected' : '') + '>Admin</option></select>' +
+    '<label>Email (admins get alert emails)</label><input id="m-email" type="email" value="' + esc(m.email) + '">' +
+    '<div class="row" style="margin-top:14px"><button class="btn ghost" onclick="closeModal()">Cancel</button><button class="btn" id="f-go" onclick="saveMember()">Save</button></div>' +
+    (id && id !== S.member.id ? '<button class="btn ghost" style="margin-top:10px;color:var(--bad)" onclick="removeMember(\'' + esc(id) + '\')">Remove member</button>' : ''));
+}
+function saveMember() {
+  var body = { action: 'saveMember', id: $('m-id').value.trim(), name: $('m-name').value.trim(), role: $('m-role').value, email: $('m-email').value.trim(), memberPin: $('m-pin').value.trim() };
+  if (!body.id || !body.name || !body.memberPin) { toast('Member #, name and PIN required'); return; }
+  busy(true);
+  apiPost(body).then(function () { closeModal(); toast('✓ Saved'); loadMembers(); }).catch(function (e) { busy(false); toast('⚠ ' + e.message, 4000); });
+}
+function removeMember(id) {
+  if (!confirm('Remove member #' + id + '?')) return;
+  apiPost({ action: 'deleteMember', id: id }).then(function () { closeModal(); toast('Removed'); loadMembers(); }).catch(function (e) { toast('⚠ ' + e.message); });
+}
+
+function editItemForm(id) {
+  var i = id ? getItem(id) : { type: TYPES[0], name: '', homeLocation: '', notes: '', seal: '', o2Size: 'D', psi: '', hydroDate: '', aedModel: '', serial: '', padsExp: '', pedsPadsExp: '', batteryExp: '', condition: 'OK', active: true };
+  var dl = '<datalist id="locs">' + locations().map(function (l) { return '<option value="' + esc(l) + '">'; }).join('') + '</datalist>';
+  showModal('<h3>' + (id ? 'Edit ' + esc(i.id) : 'Add equipment') + '</h3>' + dl +
+    '<label>Type</label><select id="e-type" onchange="typeFieldsFor(this.value)"' + (id ? ' disabled' : '') + '>' + TYPES.map(function (t) { return '<option' + (t === i.type ? ' selected' : '') + '>' + t + '</option>'; }).join('') + '</select>' +
+    '<label>Name / label</label><input id="e-name" value="' + esc(i.name) + '" placeholder="e.g. FR Bag 1, O2 D-Tank 3, AED — Rig 45-10">' +
+    (!id ? '<label>ID (leave blank to auto-number)</label><input id="e-id" placeholder="Auto: FRB-01 / O2-01 / AED-01" style="text-transform:uppercase">' : '') +
+    '<input id="e-home" type="hidden" value="' + esc(i.homeLocation || HOME_LOCATION) + '">' +
+    '<div id="e-typefields"></div>' +
+    (id ? '<label>Condition</label><select id="e-cond">' + CONDITIONS.map(function (c) { return '<option' + (c === i.condition ? ' selected' : '') + '>' + c + '</option>'; }).join('') + '</select>' : '') +
+    '<label>Notes</label><textarea id="e-notes">' + esc(i.notes) + '</textarea>' +
+    '<div class="row" style="margin-top:14px"><button class="btn ghost" onclick="' + (id ? 'openItem(\'' + esc(id) + '\')' : 'closeModal()') + '">Cancel</button><button class="btn" id="f-go" onclick="saveItem(' + (id ? '\'' + esc(id) + '\'' : '') + ')">' + (id ? 'Save' : 'Add + make QR') + '</button></div>' +
+    (id ? '<button class="btn ghost" style="margin-top:10px;color:' + (i.active ? 'var(--bad)' : 'var(--ok)') + '" onclick="toggleActive(\'' + esc(id) + '\',' + !i.active + ')">' + (i.active ? 'Retire item' : 'Reactivate item') + '</button>' : ''));
+  typeFieldsFor(i.type, i);
+}
+function typeFieldsFor(type, i) {
+  i = i || {};
+  var h = '';
+  if (type === 'First Responder Bag') h = '<label>Seal #</label><input id="e-seal" value="' + esc(i.seal || '') + '">';
+  if (type === 'Oxygen Tank') h = '<div class="row"><div><label>Cylinder size</label><select id="e-size">' + Object.keys(O2_FACTORS).map(function (s) { return '<option' + (s === (i.o2Size || 'D') ? ' selected' : '') + '>' + s + '</option>'; }).join('') + '</select></div>' +
+    '<div><label>Pressure (PSI)</label><input id="e-psi" type="number" inputmode="numeric" value="' + (i.psi !== undefined && i.psi !== '' ? i.psi : '') + '"></div></div>' +
+    '<label>Last hydro test (month stamped on tank)</label><input id="e-hydro" type="month" value="' + esc((i.hydroDate || '').slice(0, 7)) + '">';
+  if (type === 'AED') h = '<div class="row"><div><label>Model</label><input id="e-model" value="' + esc(i.aedModel || '') + '" placeholder="e.g. ZOLL AED Plus"></div><div><label>Serial #</label><input id="e-serial" value="' + esc(i.serial || '') + '"></div></div>' +
+    '<div class="row"><div><label>Adult pads exp.</label><input id="e-pads" type="date" value="' + esc(i.padsExp || '') + '"></div><div><label>Peds pads exp.</label><input id="e-peds" type="date" value="' + esc(i.pedsPadsExp || '') + '"></div></div>' +
+    '<label>Battery exp.</label><input id="e-batt" type="date" value="' + esc(i.batteryExp || '') + '">';
+  $('e-typefields').innerHTML = h;
+}
+function saveItem(id) {
+  var type = id ? getItem(id).type : $('e-type').value;
+  var b = { action: id ? 'updateItem' : 'addItem', type: type, name: $('e-name').value.trim(), homeLocation: $('e-home').value.trim(), notes: $('e-notes').value.trim() };
+  if (id) { b.id = id; b.condition = $('e-cond').value; } else if ($('e-id').value.trim()) b.id = $('e-id').value.trim().toUpperCase();
+  if (!b.name) { toast('Name required'); return; }
+  if (type === 'First Responder Bag') b.seal = $('e-seal').value.trim();
+  if (type === 'Oxygen Tank') { b.o2Size = $('e-size').value; if ($('e-psi').value !== '') b.psi = Number($('e-psi').value); b.hydroDate = $('e-hydro').value ? $('e-hydro').value + '-01' : ''; }
+  if (type === 'AED') { b.aedModel = $('e-model').value.trim(); b.serial = $('e-serial').value.trim(); b.padsExp = $('e-pads').value; b.pedsPadsExp = $('e-peds').value; b.batteryExp = $('e-batt').value; }
+  busy(true);
+  apiPost(b).then(function (d) {
+    toast(id ? '✓ Saved' : '✓ Added ' + d.id);
+    return refresh().then(function () { if (id) openItem(id); else { closeModal(); printStickers([d.id]); } });
+  }).catch(function (e) { busy(false); toast('⚠ ' + e.message, 4000); });
+}
+function toggleActive(id, active) {
+  if (!active && !confirm('Retire this item? It will be hidden from the list (history is kept).')) return;
+  apiPost({ action: 'setActive', id: id, active: active }).then(function () { closeModal(); toast(active ? 'Reactivated' : 'Retired'); refresh(); }).catch(function (e) { toast('⚠ ' + e.message); });
+}
+
+// ════════ QR STICKERS ════════
+function qrUrlFor(id) { return APP_URL + '?id=' + encodeURIComponent(id); }
+function qrImg(text) { var q = qrcode(0, 'M'); q.addData(text); q.make(); return q.createDataURL(6, 2); }
+function stickerPicker() {
+  var act = S.items.filter(function (i) { return i.active; });
+  showModal('<h3>🖨 QR stickers</h3><div class="hint">Pick items, then print (3 per row). Stickers link to ' + esc(APP_URL) + '</div>' +
+    '<div class="checks" style="margin:10px 0">' + TYPES.map(function (t) {
+      var l = act.filter(function (i) { return i.type === t; });
+      return l.length ? '<div style="font-weight:800;margin-top:10px">' + TYPE_META[t].icon + ' ' + t + '</div>' + l.map(function (i) { return '<label class="ck"><input type="checkbox" data-stk="' + esc(i.id) + '" checked> ' + esc(i.name) + ' <span class="hint">' + esc(i.id) + '</span></label>'; }).join('') : '';
+    }).join('') + '</div>' +
+    '<div class="row"><button class="btn ghost" onclick="closeModal()">Cancel</button><button class="btn" onclick="printStickers([].map.call(document.querySelectorAll(\'[data-stk]:checked\'),function(c){return c.dataset.stk}))">Print</button></div>');
+}
+function printStickers(ids) {
+  if (!ids.length) { toast('Select at least one item'); return; }
+  $('print-area').innerHTML = ids.map(function (id) {
+    var i = getItem(id) || { id: id, name: id, type: '' };
+    return '<div class="stk"><div class="h"><img src="logo.png">TVAC EQUIPMENT</div><img src="' + qrImg(qrUrlFor(id)) + '"><div class="n">' + esc(i.name) + '</div><div class="id">' + esc(id) + '</div><div class="f">Scan to sign out · sign in · inspect</div></div>';
+  }).join('');
+  setTimeout(function () { window.print(); }, 300);
+}
+
+// ════════ SCANNER ════════
+var _stream = null, _raf = null;
+function openScanner() {
+  var el = document.createElement('div'); el.id = 'scanner';
+  el.innerHTML = '<video playsinline muted></video><div class="frame"></div><div class="bar"><div style="color:#fff;text-align:center;margin-bottom:10px;font-weight:600">Point at an equipment QR sticker</div>' +
+    '<div class="row"><input id="manual-id" placeholder="Or type ID (e.g. AED-01)" style="text-transform:uppercase"><button class="btn sm" onclick="scanned($(\'manual-id\').value)">Go</button></div>' +
+    '<button class="btn ghost" style="margin-top:10px" onclick="closeScanner()">Cancel</button></div>';
+  document.body.appendChild(el);
+  var video = el.querySelector('video');
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) { toast('Camera not available — type the ID'); return; }
+  navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } }).then(function (s) {
+    _stream = s; video.srcObject = s; video.play(); tick(video);
+  }).catch(function () { toast('Camera blocked — type the ID or use your phone camera app'); });
+}
+function tick(video) {
+  var c = document.createElement('canvas'), ctx = c.getContext('2d', { willReadFrequently: true });
+  (function loop() {
+    if (!_stream) return;
+    if (video.readyState === video.HAVE_ENOUGH_DATA && window.jsQR) {
+      var w = video.videoWidth, h = video.videoHeight, sc = Math.min(1, 640 / w);
+      c.width = w * sc; c.height = h * sc; ctx.drawImage(video, 0, 0, c.width, c.height);
+      var code = jsQR(ctx.getImageData(0, 0, c.width, c.height).data, c.width, c.height, { inversionAttempts: 'dontInvert' });
+      if (code && code.data) { scanned(code.data); return; }
+    }
+    _raf = requestAnimationFrame(loop);
+  })();
+}
+function closeScanner() {
+  if (_stream) _stream.getTracks().forEach(function (t) { t.stop(); }); _stream = null;
+  cancelAnimationFrame(_raf); var el = $('scanner'); if (el) el.remove();
+}
+function scanned(text) {
+  text = String(text || '').trim(); if (!text) return;
+  var id = text;
+  try { var u = new URL(text); id = u.searchParams.get('id') || text; } catch (e) {}
+  closeScanner();
+  if (navigator.vibrate) navigator.vibrate(60);
+  if (!getItem(id)) { toast('Unknown item: ' + id); return; }
+  openItem(id.toUpperCase());
+}
+
+// ════════ MODAL ════════
+function showModal(html) {
+  var root = $('modal-root');
+  root.innerHTML = '<div class="modal" onclick="if(event.target===this)closeModal()"><div class="sheet">' + html + '</div></div>';
+  document.body.style.overflow = 'hidden';
+}
+function closeModal() { $('modal-root').innerHTML = ''; document.body.style.overflow = ''; if (location.search.indexOf('id=') >= 0) history.replaceState(null, '', APP_URL); }
+function busy(on) { var b = $('f-go'); if (b) { b.disabled = on; if (on) { b.dataset.t = b.textContent; b.textContent = 'Saving…'; } else if (b.dataset.t) b.textContent = b.dataset.t; } }
+function updateLocal(item) { var idx = S.items.findIndex(function (i) { return i.id === item.id; }); if (idx >= 0) S.items[idx] = item; else S.items.push(item); }
+
+// ════════ BOOT ════════
+(function () {
+  var p = new URLSearchParams(location.search);
+  S.pendingId = p.get('id');
+  if (p.get('tab')) S.tab = p.get('tab');
+  $('pin').addEventListener('keydown', function (e) { if (e.key === 'Enter') doLogin(); });
+  if (/PASTE_APPS_SCRIPT/.test(API_URL)) { $('login').classList.remove('hidden'); $('login-sub').textContent = '⚠ Set API_URL in index.html'; return; }
+  var pin = store('tvac_pin'), mem = store('tvac_member');
+  if (pin && mem) { S.pin = pin; try { S.member = JSON.parse(mem); } catch (e) {} }
+  if (S.pin && S.member) startApp();
+  else {
+    $('login').classList.remove('hidden');
+    if (S.pendingId) $('login-sub').textContent = 'Enter your PIN to open ' + S.pendingId;
+    setTimeout(function () { $('pin').focus(); }, 100);
+  }
+  if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(function () {});
+  // pick up changes made in the Google Sheet: every 60s, and whenever the app comes back to the foreground
+  setInterval(function () { if (S.pin && !document.hidden && !$('modal-root').innerHTML) refresh(); }, 60000);
+  document.addEventListener('visibilitychange', function () { if (!document.hidden && S.pin && !$('modal-root').innerHTML) refresh(); });
+})();
+</script>
+</body>
+</html>
