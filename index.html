@@ -615,12 +615,19 @@ function qrImg(text) { var q = qrcode(0, 'M'); q.addData(text); q.make(); return
 function stickerPicker() {
   var act = S.items.filter(function (i) { return i.active; });
   showModal('<h3>🖨 QR stickers</h3><div class="hint">Prints one 1 × 3 in label per page. In the print window choose your label printer and paper size 3 × 1 in, scale 100%.</div>' +
-    '<div class="checks" style="margin:10px 0">' + TYPES.map(function (t) {
+    '<div class="row" style="margin-top:10px"><button class="btn ghost sm" style="width:100%" onclick="stkAll(true)">☑ Select all</button><button class="btn ghost sm" style="width:100%" onclick="stkAll(false)">☐ Clear</button></div>' +
+    '<div class="checks" style="margin:6px 0 10px">' + TYPES.map(function (t) {
       var l = act.filter(function (i) { return i.type === t; });
-      return l.length ? '<div style="font-weight:800;margin-top:10px">' + TYPE_META[t].icon + ' ' + t + '</div>' + l.map(function (i) { return '<label class="ck"><input type="checkbox" data-stk="' + esc(i.id) + '" checked> ' + esc(i.name) + ' <span class="hint">' + esc(i.id) + '</span></label>'; }).join('') : '';
+      return l.length ? '<div style="display:flex;align-items:center;justify-content:space-between;margin-top:12px"><b>' + TYPE_META[t].icon + ' ' + t + ' (' + l.length + ')</b><button class="btn ghost sm" onclick="stkAll(true,\'' + t + '\')">Select all</button></div>' +
+        l.map(function (i) { return '<label class="ck"><input type="checkbox" data-stk="' + esc(i.id) + '" data-type="' + esc(t) + '" onchange="stkCount()"> ' + esc(i.name) + ' <span class="hint">' + esc(i.id) + '</span></label>'; }).join('') : '';
     }).join('') + '</div>' +
-    '<div class="row"><button class="btn ghost" onclick="closeModal()">Cancel</button><button class="btn" onclick="printStickers([].map.call(document.querySelectorAll(\'[data-stk]:checked\'),function(c){return c.dataset.stk}))">Print</button></div>');
+    '<div class="row" style="position:sticky;bottom:0;background:#fff;padding-top:8px"><button class="btn ghost" onclick="closeModal()">Cancel</button><button class="btn" id="stk-go" onclick="printStickers([].map.call(document.querySelectorAll(\'[data-stk]:checked\'),function(c){return c.dataset.stk}))">Print (0)</button></div>');
 }
+function stkAll(on, type) {
+  document.querySelectorAll('[data-stk]').forEach(function (c) { if (!type || c.dataset.type === type) c.checked = on; });
+  stkCount();
+}
+function stkCount() { var n = document.querySelectorAll('[data-stk]:checked').length; $('stk-go').textContent = 'Print (' + n + ')'; }
 function printStickers(ids) {
   if (!ids.length) { toast('Select at least one item'); return; }
   $('print-area').innerHTML = ids.map(function (id) {
