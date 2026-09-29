@@ -377,7 +377,7 @@ function itemHtml(i, log) {
     ['Condition', '<span class="badge ' + (i.condition === 'OK' ? 'b-ok' : i.condition === 'Out of Service' ? 'b-bad' : 'b-warn') + '">' + esc(i.condition) + '</span>']];
   if (i.type === 'AED') kv.push(['Serial', esc(i.serial || '—')], ['Adult pads exp', esc(i.padsExp || '—')], ['Peds pads exp', esc(i.pedsPadsExp || '—')], ['Battery exp', esc(i.batteryExp || '—')]);
   kv.push(['Last inspected', i.lastInspected ? fmtTs(i.lastInspected) : 'Never'], ['Last activity', ago(i.lastUpdated) + (i.lastMember ? ' · #' + esc(i.lastMember) : '')]);
-  if (i.notes) kv.push(['Notes', esc(i.notes)]);
+  if (i.notes) kv.push(['Permanent notes', esc(i.notes)]);
 
   var banner = i.status === 'Out of Service' ? '<div class="oos-banner"><div class="big">⛔ OUT OF SERVICE</div><div class="why">DO NOT USE' + (i.statusNote ? ' — ' + esc(i.statusNote) : '') + '</div></div>'
     : i.condition === 'Needs Attention' ? '<div class="oos-banner warn-banner"><div class="big">⚠ NEEDS ATTENTION</div>' + (i.statusNote ? '<div class="why">' + esc(i.statusNote) + '</div>' : '') + '</div>'
@@ -580,7 +580,7 @@ function editItemForm(id) {
     '<input id="e-home" type="hidden" value="' + esc(i.homeLocation || HOME_LOCATION) + '">' +
     '<div id="e-typefields"></div>' +
     (id ? '<label>Condition</label><select id="e-cond">' + CONDITIONS.map(function (c) { return '<option' + (c === i.condition ? ' selected' : '') + '>' + c + '</option>'; }).join('') + '</select>' : '') +
-    '<label>Notes</label><textarea id="e-notes">' + esc(i.notes) + '</textarea>' +
+    '<label>Permanent notes (stay until edited)</label><textarea id="e-notes">' + esc(i.notes) + '</textarea>' +
     '<div class="row" style="margin-top:14px"><button class="btn ghost" onclick="' + (id ? 'openItem(\'' + esc(id) + '\')' : 'closeModal()') + '">Cancel</button><button class="btn" id="f-go" onclick="saveItem(' + (id ? '\'' + esc(id) + '\'' : '') + ')">' + (id ? 'Save' : 'Add + make QR') + '</button></div>' +
     (id ? '<button class="btn ghost" style="margin-top:10px;color:' + (i.active ? 'var(--bad)' : 'var(--ok)') + '" onclick="toggleActive(\'' + esc(id) + '\',' + !i.active + ')">' + (i.active ? '⏸ Deactivate item' : '▶ Activate item') + '</button>' : ''));
   typeFieldsFor(i.type, i);
