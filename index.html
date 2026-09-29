@@ -249,7 +249,9 @@ function startApp() {
   $('who').textContent = S.member.name + ' · #' + S.member.id;
   $('tab-admin').classList.toggle('hidden', !isAdmin());
   // show last-known data instantly, then refresh from the server
-  try { var c = JSON.parse(store('tvac_cache') || 'null'); if (c && c.items) { S.items = c.items; S.cfg = c.cfg || {}; render(); } } catch (e) {}
+  try { var c = JSON.parse(store('tvac_cache') || 'null'); if (c && c.items) { S.items = c.items; S.cfg = c.cfg || {}; S.loaded = true; } } catch (e) {}
+  if (S.tab !== 'home' && S.tab !== 'activity' && !(S.tab === 'admin' && isAdmin())) S.tab = 'home';
+  render();
   if (S.pendingId && getItem(S.pendingId)) { var pid = S.pendingId; S.pendingId = null; openItem(pid); }
   refresh().then(function () {
     if (S.pendingId) { var id = S.pendingId; S.pendingId = null; openItem(id); }
@@ -269,10 +271,10 @@ function refresh() {
   if (S.refreshing) return S.refreshing;
   $('sync').innerHTML = '<span class="syncing">⟳</span>';
   S.refreshing = apiGet({ action: 'getInventory', pin: S.pin }).then(function (d) {
-    S.items = d.items; S.cfg = d.config || {}; saveCache();
+    S.items = d.items; S.cfg = d.config || {}; S.loaded = true; saveCache();
     $('sync').textContent = '⟳'; S.refreshing = null;
     if (!$('modal-root').innerHTML) render(); else if (S.tab === 'home') renderList();
-  }).catch(function (e) { $('sync').textContent = '⟳'; S.refreshing = null; toast('⚠ ' + e.message); });
+  }).catch(function (e) { $('sync').textContent = '⟳'; S.refreshing = null; toast('⚠ ' + e.message); S.loaded = true; if (!$('modal-root').innerHTML) render(); });
   return S.refreshing;
 }
 
@@ -342,6 +344,7 @@ function renderList() {
     if (q && (i.name + ' ' + i.id + ' ' + i.location + ' ' + i.homeLocation + ' ' + i.serial).toLowerCase().indexOf(q) < 0) return false;
     return true;
   }).sort(function (a, b) { return a.type.localeCompare(b.type) || a.id.localeCompare(b.id, undefined, { numeric: true }); });
+  if (!S.loaded && !S.items.length) { $('list').innerHTML = '<div class="spinner"></div><div class="hint" style="text-align:center">Loading equipment…</div>'; return; }
   $('list').innerHTML = list.length ? list.map(itemRow).join('') : '<div class="hint" style="text-align:center;padding:20px">' + (S.items.length ? 'No matching items' : 'No equipment yet' + (isAdmin() ? ' — add items in Admin' : '')) + '</div>';
 }
 function itemRow(i) {
@@ -390,10 +393,10 @@ function itemHtml(i, log) {
     (i.active ? '<div class="row" style="margin:12px 0">' +
       (out ? '<button class="btn green" onclick="actionForm(\'' + esc(i.id) + '\',\'IN\')">✓ Sign IN</button>'
            : i.status === 'Out of Service' ? '<button class="btn green" onclick="statusForm(\'' + esc(i.id) + '\',\'Available\')">✓ Back in service</button>'
+           : i.condition === 'Needs Attention' ? '<button class="btn ghost" disabled style="opacity:1;color:var(--warn);font-size:14px">🔒 Inspect before sign-out</button>'
            : '<button class="btn red" onclick="actionForm(\'' + esc(i.id) + '\',\'OUT\')">↗ Sign OUT</button>') +
       '<button class="btn" onclick="inspectForm(\'' + esc(i.id) + '\')">📋 Inspect</button></div>' +
       '<div class="row" style="margin-bottom:12px">' +
-      (i.condition === 'Needs Attention' && i.status === 'Available' ? '<button class="btn ghost sm" style="width:100%;color:var(--ok)" onclick="statusForm(\'' + esc(i.id) + '\',\'Available\')">✓ Fixed — mark OK</button>' : '') +
       (i.status !== 'Out of Service' ? '<button class="btn ghost sm" style="width:100%" onclick="statusForm(\'' + esc(i.id) + '\',\'Out of Service\')">⛔ Out of Service</button>' : '') +
       (i.status === 'Not Available' ? '<button class="btn ghost sm" style="width:100%" onclick="statusForm(\'' + esc(i.id) + '\',\'Available\')">✅ Found — Available</button>'
         : '<button class="btn ghost sm" style="width:100%" onclick="statusForm(\'' + esc(i.id) + '\',\'Not Available\')">❓ Not in location</button>') +
