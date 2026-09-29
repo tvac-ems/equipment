@@ -353,7 +353,7 @@ function itemHtml(i, log) {
   var flags = i.flags.filter(function (f) { return f.text !== 'Out of Service' && f.text !== 'Not Available / missing'; })
     .map(function (f) { return '<div class="flag ' + f.level + '">⚠ ' + esc(f.text) + '</div>'; }).join('');
   var hist = log ? (log.length ? log.map(logRow).join('') : '<div class="hint">No history yet</div>') : '<div class="hint">History unavailable offline</div>';
-  var inactive = !i.active ? '<div class="flag bad">This item is retired</div>' : '';
+  var inactive = !i.active ? '<div class="oos-banner na-banner"><div class="big">⏸ INACTIVE</div><div class="why">This sticker is not in use' + (isAdmin() ? ' — tap Activate below to turn it back on' : '') + '</div></div>' : '';
 
   return '<div style="display:flex;align-items:center;gap:10px;margin-bottom:8px"><span style="font-size:30px">' + m.icon + '</span>' +
     '<div style="flex:1"><h3>' + esc(i.name) + '</h3><div class="hint" style="margin:0">' + esc(i.type) + '</div></div>' +
@@ -369,6 +369,7 @@ function itemHtml(i, log) {
         : '<button class="btn ghost sm" style="width:100%" onclick="statusForm(\'' + esc(i.id) + '\',\'Not Available\')">❓ Not in location</button>') +
       '</div>' : '') +
     '<div class="card" style="box-shadow:none;border:1px solid var(--border)"><div class="kv">' + kv.map(function (p) { return '<div>' + p[0] + '</div><div>' + p[1] + '</div>'; }).join('') + '</div></div>' +
+    (isAdmin() ? '<button class="btn ' + (i.active ? 'ghost' : 'green') + '" style="margin-bottom:10px' + (i.active ? ';color:var(--text2)' : '') + '" onclick="toggleActive(\'' + esc(i.id) + '\',' + !i.active + ')">' + (i.active ? '⏸ Deactivate (hide from dashboard)' : '▶ Activate') + '</button>' : '') +
     (isAdmin() ? '<div class="row" style="margin-bottom:12px"><button class="btn ghost" onclick="editItemForm(\'' + esc(i.id) + '\')">✏️ Edit</button><button class="btn ghost" onclick="printStickers([\'' + esc(i.id) + '\'])">🖨 QR Sticker</button></div>' : '') +
     '<h2 style="font-size:15px;margin:6px 0 8px">History</h2>' + hist;
 }
@@ -496,8 +497,8 @@ function renderAdmin() {
   var retired = S.items.filter(function (i) { return !i.active; });
   $('view').innerHTML =
     '<div class="card"><h2>➕ Equipment</h2><div class="row"><button class="btn" onclick="editItemForm()">Add item</button><button class="btn ghost" onclick="stickerPicker()">🖨 QR stickers</button></div></div>' +
+    (retired.length ? '<div class="card"><h2>⏸ Inactive items (' + retired.length + ')</h2><div class="hint" style="margin-bottom:6px">Hidden from the dashboard. Tap one to activate it again.</div>' + retired.map(itemRow).join('') + '</div>' : '') +
     '<div class="card"><h2>👥 Members</h2><div id="mem"><div class="spinner"></div></div><button class="btn ghost" style="margin-top:10px" onclick="memberForm()">Add member</button></div>' +
-    (retired.length ? '<div class="card"><h2>Retired items</h2>' + retired.map(itemRow).join('') + '</div>' : '') +
     '<div class="card"><h2>Account</h2><div class="hint" style="margin-bottom:10px">Backend: ' + esc(API_URL.slice(0, 60)) + '…</div><button class="btn ghost" onclick="logout()">Log out</button></div>';
   loadMembers();
 }
@@ -542,7 +543,7 @@ function editItemForm(id) {
     (id ? '<label>Condition</label><select id="e-cond">' + CONDITIONS.map(function (c) { return '<option' + (c === i.condition ? ' selected' : '') + '>' + c + '</option>'; }).join('') + '</select>' : '') +
     '<label>Notes</label><textarea id="e-notes">' + esc(i.notes) + '</textarea>' +
     '<div class="row" style="margin-top:14px"><button class="btn ghost" onclick="' + (id ? 'openItem(\'' + esc(id) + '\')' : 'closeModal()') + '">Cancel</button><button class="btn" id="f-go" onclick="saveItem(' + (id ? '\'' + esc(id) + '\'' : '') + ')">' + (id ? 'Save' : 'Add + make QR') + '</button></div>' +
-    (id ? '<button class="btn ghost" style="margin-top:10px;color:' + (i.active ? 'var(--bad)' : 'var(--ok)') + '" onclick="toggleActive(\'' + esc(id) + '\',' + !i.active + ')">' + (i.active ? 'Retire item' : 'Reactivate item') + '</button>' : ''));
+    (id ? '<button class="btn ghost" style="margin-top:10px;color:' + (i.active ? 'var(--bad)' : 'var(--ok)') + '" onclick="toggleActive(\'' + esc(id) + '\',' + !i.active + ')">' + (i.active ? '⏸ Deactivate item' : '▶ Activate item') + '</button>' : ''));
   typeFieldsFor(i.type, i);
 }
 function typeFieldsFor(type, i) {
@@ -572,8 +573,7 @@ function saveItem(id) {
   }).catch(function (e) { busy(false); toast('⚠ ' + e.message, 4000); });
 }
 function toggleActive(id, active) {
-  if (!active && !confirm('Retire this item? It will be hidden from the list (history is kept).')) return;
-  apiPost({ action: 'setActive', id: id, active: active }).then(function () { closeModal(); toast(active ? 'Reactivated' : 'Retired'); refresh(); }).catch(function (e) { toast('⚠ ' + e.message); });
+  apiPost({ action: 'setActive', id: id, active: active }).then(function () { closeModal(); toast(active ? '▶ Activated — back on the dashboard' : '⏸ Deactivated — hidden from the dashboard'); refresh(); }).catch(function (e) { toast('⚠ ' + e.message); });
 }
 
 // ════════ QR STICKERS ════════
