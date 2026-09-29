@@ -51,7 +51,7 @@ textarea{min-height:70px;resize:vertical}
 .gl{border-radius:10px;padding:8px 4px;text-align:center;cursor:pointer;border:2px solid transparent}
 .gl.active{border-color:var(--navy)}
 .gl .n{font-size:22px;font-weight:900;line-height:1.1}.gl .l{font-size:11px;font-weight:700}
-.gl.av{background:var(--okbg);color:var(--ok)}.gl.as{background:#e6ecfa;color:var(--navy)}.gl.os{background:var(--badbg);color:var(--bad)}.gl.na{background:#eceef1;color:#4b5563}
+.gl.av{background:var(--okbg);color:var(--ok)}.gl.warn{background:var(--warnbg);color:var(--warn)}.gl.as{background:#e6ecfa;color:var(--navy)}.gl.os{background:var(--badbg);color:var(--bad)}.gl.na{background:#eceef1;color:#4b5563}
 .who{display:flex;justify-content:space-between;gap:8px;font-size:13px;padding:6px 0;border-top:1px solid var(--border);cursor:pointer}
 .who b{font-weight:700}
 .scan-btn{display:flex;align-items:center;gap:12px;background:var(--red);color:#fff;border-radius:14px;padding:16px;margin-bottom:12px;cursor:pointer;border:0;width:100%;text-align:left;font-weight:700;font-size:17px}
@@ -83,7 +83,9 @@ textarea{min-height:70px;resize:vertical}
 .log b{font-weight:700}.log .t{color:var(--text2);font-size:12px}
 .tabs{position:fixed;bottom:0;left:0;right:0;background:#fff;border-top:1px solid var(--border);display:flex;padding-bottom:env(safe-area-inset-bottom);z-index:40}
 .tabs button{flex:1;border:0;background:none;padding:10px 0 8px;font-size:11px;font-weight:600;color:var(--text2);cursor:pointer}
-.tabs button .i{display:block;font-size:20px}.tabs button.on{color:var(--navy)}
+.tabs button .i{display:block;font-size:20px}
+.tab-count{position:absolute;top:4px;left:calc(50% + 6px);background:var(--bad);color:#fff;font-size:10px;font-weight:800;border-radius:9px;padding:1px 5px;min-width:16px}
+.al-sec{margin-bottom:12px}.al-sec h2{display:flex;align-items:center;gap:6px}.al-sec .why{font-size:12px;font-weight:600;margin-top:1px}.tabs button.on{color:var(--navy)}
 .modal{position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:100;display:flex;align-items:flex-end;justify-content:center}
 .sheet{background:#fff;width:100%;max-width:640px;max-height:92vh;overflow-y:auto;border-radius:18px 18px 0 0;padding:16px 16px calc(16px + env(safe-area-inset-bottom))}
 .sheet h3{margin:0 0 6px;font-size:18px}
@@ -145,6 +147,7 @@ textarea{min-height:70px;resize:vertical}
   <nav class="tabs">
     <button data-tab="home" onclick="go('home')"><span class="i">🏠</span>Home</button>
     <button onclick="openScanner()"><span class="i">📷</span>Scan</button>
+    <button data-tab="alerts" onclick="go('alerts')" style="position:relative"><span class="i">⚠️</span>Alerts<span id="alert-count" class="tab-count hidden"></span></button>
     <button data-tab="activity" onclick="go('activity')"><span class="i">🕘</span>Activity</button>
     <button data-tab="admin" id="tab-admin" onclick="go('admin')"><span class="i">⚙️</span>Admin</button>
   </nav>
@@ -250,7 +253,7 @@ function startApp() {
   $('tab-admin').classList.toggle('hidden', !isAdmin());
   // show last-known data instantly, then refresh from the server
   try { var c = JSON.parse(store('tvac_cache') || 'null'); if (c && c.items) { S.items = c.items; S.cfg = c.cfg || {}; S.loaded = true; } } catch (e) {}
-  if (S.tab !== 'home' && S.tab !== 'activity' && !(S.tab === 'admin' && isAdmin())) S.tab = 'home';
+  if (S.tab !== 'home' && S.tab !== 'activity' && S.tab !== 'alerts' && !(S.tab === 'admin' && isAdmin())) S.tab = 'home';
   render();
   if (S.pendingId && getItem(S.pendingId)) { var pid = S.pendingId; S.pendingId = null; openItem(pid); }
   refresh().then(function () {
@@ -271,7 +274,7 @@ function refresh() {
   if (S.refreshing) return S.refreshing;
   $('sync').innerHTML = '<span class="syncing">⟳</span>';
   S.refreshing = apiGet({ action: 'getInventory', pin: S.pin }).then(function (d) {
-    S.items = d.items; S.cfg = d.config || {}; S.loaded = true; saveCache();
+    S.items = d.items; S.cfg = d.config || {}; S.loaded = true; saveCache(); checkNewAlerts();
     $('sync').textContent = '⟳'; S.refreshing = null;
     if (!$('modal-root').innerHTML) render(); else if (S.tab === 'home') renderList();
   }).catch(function (e) { $('sync').textContent = '⟳'; S.refreshing = null; toast('⚠ ' + e.message); S.loaded = true; if (!$('modal-root').innerHTML) render(); });
@@ -284,7 +287,9 @@ function render() {
   document.querySelectorAll('.tabs button[data-tab]').forEach(function (b) { b.classList.toggle('on', b.dataset.tab === S.tab); });
   if (S.tab === 'home') renderHome();
   else if (S.tab === 'activity') renderActivity();
+  else if (S.tab === 'alerts') renderAlerts();
   else if (S.tab === 'admin') renderAdmin();
+  updateAlertCount();
 }
 
 // ════════ HOME ════════
@@ -305,7 +310,7 @@ function renderHome() {
   var alerts = flagged.length ? '<div class="card"><h2>⚠ Needs attention (' + flagged.length + ')</h2>' +
     flagged.slice(0, 6).map(function (i) {
       return '<div class="flag ' + worst(i.flags) + '" style="cursor:pointer" onclick="openItem(\'' + esc(i.id) + '\')"><span>' + TYPE_META[i.type].icon + '</span><span><b>' + esc(i.name) + '</b> — ' + i.flags.map(function (f) { return esc(f.text); }).join(' · ') + '</span></div>';
-    }).join('') + (flagged.length > 6 ? '<div class="hint" style="cursor:pointer" onclick="setFilter(\'Flagged\')">+ ' + (flagged.length - 6) + ' more — tap to view</div>' : '') + '</div>' : '';
+    }).join('') + '<div class="hint" style="cursor:pointer;font-weight:700;color:var(--navy);margin-top:4px" onclick="go(\'alerts\')">' + (flagged.length > 6 ? '+ ' + (flagged.length - 6) + ' more — ' : '') + 'View all alerts →</div>' + '</div>' : '';
 
   var chips = ['All', 'Mine'].concat(STATUSES, ['Flagged'], TYPES).map(function (c) {
     var lbl = TYPE_META[c] ? TYPE_META[c].short : c === 'Mine' ? 'My items' : c;
@@ -330,6 +335,11 @@ function glanceHtml(active) {
   }).join('');
   return '<div class="card"><h2 style="margin-bottom:0">At a glance <span class="hint" style="font-weight:500">· ' + active.length + ' items</span></h2>' +
     '<div class="glance">' + box('Available', 'av', 'Available') + box('Assigned', 'as', 'Assigned') + box('Out of Service', 'os', 'Out of Svc') + box('Not Available', 'na', 'Not Avail.') + '</div>' +
+    (function () {
+      var g = {}; alertGroups().forEach(function (x) { g[x.key] = x.items.length; });
+      var ab = function (n, cls, lbl) { return '<div class="gl ' + cls + '" onclick="go(\'alerts\')"><div class="n">' + n + '</div><div class="l">' + lbl + '</div></div>'; };
+      return '<div class="glance" style="grid-template-columns:repeat(3,1fr)">' + ab(g.exp || 0, 'os', '🔴 Expired') + ab(g.na || 0, 'warn', '⚠ Needs Attn') + ab(g.soon || 0, 'warn', '🟠 Expiring soon') + '</div>';
+    })() +
     (who ? '<div style="margin-top:10px"><div class="hint" style="font-weight:700;margin-bottom:2px">Who has what</div>' + who + '</div>' : '') + '</div>';
 }
 function setFilter(f) { S.filter = S.filter === f ? 'All' : f; renderHome(); }
@@ -521,6 +531,70 @@ function submitInspect(id) {
 }
 
 // ════════ ACTIVITY ════════
+// ════════ NOTIFICATIONS (admins) ════════
+function notifOn() { return isAdmin() && store('tvac_notif') === 'on' && window.Notification && Notification.permission === 'granted'; }
+function setNotif(on) {
+  if (!on) { store('tvac_notif', null); toast('Notifications off'); renderAdmin(); return; }
+  if (!window.Notification) { toast('This browser doesn\'t support notifications. On iPhone, add the app to your Home Screen first.', 5000); return; }
+  Notification.requestPermission().then(function (p) {
+    if (p === 'granted') { store('tvac_notif', 'on'); store('tvac_seen', null); checkNewAlerts(); toast('🔔 Notifications on'); }
+    else toast('Notifications were blocked — allow them in your phone/browser settings', 5000);
+    renderAdmin();
+  });
+}
+function pushNotif(title, body, id) {
+  if (!notifOn()) return;
+  var opts = { body: body, icon: 'icon-192.png', badge: 'icon-192.png', tag: 'tvac-' + (id || Date.now()), data: { id: id || '' } };
+  if (navigator.serviceWorker) navigator.serviceWorker.ready.then(function (r) { r.showNotification(title, opts); }).catch(function () { try { new Notification(title, opts); } catch (e) {} });
+  else try { new Notification(title, opts); } catch (e) {}
+}
+function testNotif() { pushNotif('TVAC Equipment', 'Notifications are working ✓', ''); }
+function checkNewAlerts() {
+  if (!isAdmin() || store('tvac_notif') !== 'on') return;
+  var now = {}, list = [];
+  alertGroups().forEach(function (g) { g.items.forEach(function (i) { var k = g.key + ':' + i.id + ':' + g.why(i); now[k] = 1; list.push({ k: k, g: g, i: i }); }); });
+  var prev = null; try { prev = JSON.parse(store('tvac_seen') || 'null'); } catch (e) {}
+  store('tvac_seen', JSON.stringify(now));
+  if (!prev) return; // first run: remember current alerts without notifying
+  var fresh = list.filter(function (x) { return !prev[x.k]; });
+  fresh.slice(0, 5).forEach(function (x) { pushNotif(x.g.title + ' — ' + x.i.name, x.g.why(x.i), x.i.id); });
+  if (fresh.length > 5) pushNotif('TVAC Equipment', (fresh.length - 5) + ' more new alerts — open the Alerts tab', '');
+}
+
+// ════════ ALERTS ════════
+function alertGroups() {
+  var act = S.items.filter(function (i) { return i.active; });
+  var has = function (i, re) { return (i.flags || []).some(function (f) { return re.test(f.text); }); };
+  var why = function (i, re) { return (i.flags || []).filter(function (f) { return re.test(f.text); }).map(function (f) { return f.text; }).join(' · '); };
+  var EXP = /expired|overdue/i, SOON = /exp\. in|due in/i;
+  return [
+    { key: 'exp', title: '🔴 Expired', hint: 'Pads, battery or hydro test past due', cls: 'bad', items: act.filter(function (i) { return has(i, EXP); }), why: function (i) { return why(i, EXP); } },
+    { key: 'oos', title: '⛔ Out of Service', hint: 'Can\'t be signed out', cls: 'bad', items: act.filter(function (i) { return i.status === 'Out of Service'; }), why: function (i) { return i.statusNote || 'Out of Service'; } },
+    { key: 'na', title: '⚠ Needs Attention', hint: 'Must be inspected before sign-out', cls: 'warn', items: act.filter(function (i) { return i.condition === 'Needs Attention' && i.status !== 'Out of Service'; }), why: function (i) { return i.statusNote || 'Needs attention'; } },
+    { key: 'soon', title: '🟠 Expiring soon', hint: 'Within ' + ((S.cfg && S.cfg.EXPIRY_WARN_DAYS) || 30) + ' days', cls: 'warn', items: act.filter(function (i) { return has(i, SOON); }), why: function (i) { return why(i, SOON); } },
+    { key: 'miss', title: '❓ Not in location', hint: 'Missing / not where it should be', cls: 'bad', items: act.filter(function (i) { return i.status === 'Not Available'; }), why: function (i) { return i.statusNote || 'Not in location'; } }
+  ];
+}
+function updateAlertCount() {
+  var el = $('alert-count'); if (!el) return;
+  var ids = {}; alertGroups().forEach(function (g) { g.items.forEach(function (i) { ids[i.id] = 1; }); });
+  var n = Object.keys(ids).length;
+  el.textContent = n > 99 ? '99+' : n; el.classList.toggle('hidden', !n);
+}
+function renderAlerts() {
+  var groups = alertGroups();
+  var total = groups.reduce(function (a, g) { return a + g.items.length; }, 0);
+  if (!S.loaded && !S.items.length) { $('view').innerHTML = '<div class="card"><div class="spinner"></div></div>'; return; }
+  $('view').innerHTML = (total ? '' : '<div class="card" style="text-align:center;padding:30px"><div style="font-size:40px">✅</div><div style="font-weight:800;font-size:17px;margin-top:6px">All clear</div><div class="hint">Nothing expired, out of service, or needing attention.</div></div>') +
+    groups.filter(function (g) { return g.items.length; }).map(function (g) {
+      return '<div class="card al-sec"><h2>' + g.title + ' <span class="badge b-' + g.cls + '">' + g.items.length + '</span></h2><div class="hint" style="margin:-6px 0 6px">' + esc(g.hint) + '</div>' +
+        g.items.map(function (i) {
+          return '<div class="item" onclick="openItem(\'' + esc(i.id) + '\')"><div class="ic">' + TYPE_META[i.type].icon + '</div><div class="mid"><div class="nm">' + esc(i.name) + ' <span class="hint">' + esc(i.id) + '</span></div>' +
+            '<div class="why" style="color:var(--' + g.cls + ')">' + esc(g.why(i)) + '</div><div class="sub">' + esc(whereText(i)) + '</div></div>' + statusBadge(i) + '</div>';
+        }).join('') + '</div>';
+    }).join('');
+}
+
 function renderActivity() {
   $('view').innerHTML = '<div class="card"><h2>Recent activity</h2><div id="act"><div class="spinner"></div></div></div>';
   apiGet({ action: 'getLog', limit: 100, pin: S.pin }).then(function (d) {
@@ -538,6 +612,9 @@ function renderAdmin() {
     '<div class="card"><h2>➕ Equipment</h2><div class="row"><button class="btn" onclick="editItemForm()">Add item</button><button class="btn ghost" onclick="stickerPicker()">🖨 QR stickers</button></div></div>' +
     (retired.length ? '<div class="card"><h2>⏸ Inactive items (' + retired.length + ')</h2><div class="hint" style="margin-bottom:6px">Hidden from the dashboard. Tap one to activate it again.</div>' + retired.map(itemRow).join('') + '</div>' : '') +
     '<div class="card"><h2>👥 Members</h2><div id="mem"><div class="spinner"></div></div><button class="btn ghost" style="margin-top:10px" onclick="memberForm()">Add member</button></div>' +
+    '<div class="card"><h2>🔔 App notifications</h2><div class="hint" style="margin-bottom:10px">Get a phone notification when an item expires, goes Out of Service, needs attention or goes missing. Works while the app is open or in the background (emails still go out as well).</div>' +
+    (notifOn() ? '<div class="row"><button class="btn ghost" onclick="testNotif()">Send test</button><button class="btn ghost" style="color:var(--bad)" onclick="setNotif(false)">Turn off</button></div>'
+      : '<button class="btn" onclick="setNotif(true)">🔔 Turn on notifications</button>') + '</div>' +
     '<div class="card"><h2>Account</h2><div class="hint" style="margin-bottom:10px">Backend: ' + esc(API_URL.slice(0, 60)) + '…</div><button class="btn ghost" onclick="logout()">Log out</button></div>';
   loadMembers();
 }
@@ -705,7 +782,8 @@ function updateLocal(item) { var idx = S.items.findIndex(function (i) { return i
   }
   if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(function () {});
   // pick up changes made in the Google Sheet: every 60s, and whenever the app comes back to the foreground
-  setInterval(function () { if (S.pin && !document.hidden && !$('modal-root').innerHTML) refresh(); }, 60000);
+  setInterval(function () { if (S.pin && (!document.hidden || notifOn()) && !$('modal-root').innerHTML) refresh(); }, 60000);
+  if (navigator.serviceWorker) navigator.serviceWorker.addEventListener('message', function (e) { if (e.data && e.data.type === 'open' && e.data.id && S.pin) openItem(e.data.id); });
   document.addEventListener('visibilitychange', function () { if (!document.hidden && S.pin && !$('modal-root').innerHTML) refresh(); });
 })();
 </script>
