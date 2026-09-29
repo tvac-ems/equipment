@@ -127,6 +127,7 @@ textarea{min-height:70px;resize:vertical}
     <img class="logo" src="logo.png" alt="">
     <h1>TVAC Equipment<small id="who"></small></h1>
     <button onclick="refresh()" id="sync">⟳</button>
+    <button onclick="confirmLogout()" title="Log out" style="font-size:13px">Log out</button>
   </header>
   <main id="view"></main>
   <nav class="tabs">
@@ -222,6 +223,10 @@ function doLogin() {
     S.pin = p; S.member = d.member; store('tvac_pin', p); store('tvac_member', JSON.stringify(d.member));
     startApp();
   }).catch(function (e) { $('login-err').textContent = '✕ ' + e.message; $('pin').value = ''; $('pin').focus(); });
+}
+function confirmLogout() {
+  showModal('<h3>Log out?</h3><div class="hint" style="margin-bottom:14px">Logged in as ' + esc(S.member.name) + ' (#' + esc(S.member.id) + '). You\'ll need your PIN to log back in.</div>' +
+    '<div class="row"><button class="btn ghost" onclick="closeModal()">Cancel</button><button class="btn red" onclick="closeModal();logout()">Log out</button></div>');
 }
 function logout() {
   store('tvac_pin', null); store('tvac_member', null); S.pin = null; S.member = null;
