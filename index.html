@@ -16,6 +16,13 @@
   --ok:#15803d;--okbg:#e8f5e9;--warn:#b45309;--warnbg:#fff4e0;--bad:#b91c1c;--badbg:#fdecea;--blue:#1b2a6b;
 }
 *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+button,.item,.tile,.gl,.chip,.who,.scan-btn,.flag,.ck,a{touch-action:manipulation;-webkit-user-select:none;user-select:none}
+.btn,.tile,.gl,.chip,.scan-btn,.tabs button,header button{transition:transform .08s ease,opacity .08s ease,filter .08s ease}
+.btn:active,.tile:active,.gl:active,.chip:active,.scan-btn:active,.tabs button:active,header button:active{transform:scale(.96);filter:brightness(.92)}
+.item:active,.who:active,.flag:active{background:#eef1f5}
+.modal{animation:fadein .12s ease}.sheet{animation:slideup .16s ease}
+@keyframes fadein{from{opacity:0}to{opacity:1}}@keyframes slideup{from{transform:translateY(24px)}to{transform:none}}
+.syncing{animation:sp 0.8s linear infinite;display:inline-block}
 html,body{margin:0;background:var(--bg);color:var(--text);font:15px/1.4 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif}
 button,input,select,textarea{font:inherit}
 .hidden{display:none!important}
@@ -59,7 +66,7 @@ textarea{min-height:70px;resize:vertical}
 .oos-banner{background:var(--bad);color:#fff;border-radius:12px;padding:14px;margin-bottom:10px;text-align:center}
 .oos-banner .big{font-size:22px;font-weight:900;letter-spacing:.5px}
 .oos-banner .why{font-size:14px;margin-top:4px;opacity:.95}
-.na-banner{background:#4b5563}
+.na-banner{background:#4b5563}.warn-banner{background:#b45309}
 .item .ic{font-size:22px;width:30px;text-align:center}
 .item .mid{flex:1;min-width:0}.item .nm{font-weight:700}.item .sub{font-size:12px;color:var(--text2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .badge{display:inline-block;font-size:12px;font-weight:700;padding:3px 9px;border-radius:12px;white-space:nowrap}
@@ -95,14 +102,19 @@ textarea{min-height:70px;resize:vertical}
 /* print stickers */
 #print-area{display:none}
 @media print{
-  body *{visibility:hidden}
-  #print-area,#print-area *{visibility:visible}
-  #print-area{display:grid!important;position:absolute;left:0;top:0;grid-template-columns:repeat(3,1fr);gap:8px;width:100%}
-  .stk{border:2px solid #1b2a6b;border-radius:10px;padding:8px;text-align:center;break-inside:avoid;page-break-inside:avoid}
-  .stk .h{display:flex;align-items:center;justify-content:center;gap:5px;background:#1b2a6b;color:#fff;font-weight:800;font-size:11px;border-radius:5px;padding:3px;margin-bottom:4px;border-bottom:2px solid #c8102e}.stk .h img{width:20px;height:20px;border-radius:50%;background:#fff}
-  .stk img{width:100%;max-width:150px}
-  .stk .n{font-weight:800;font-size:13px}.stk .id{font-size:12px;font-weight:700;color:#c8102e}
-  .stk .f{font-size:9px;color:#444}
+  body > *:not(#print-area){display:none!important}
+  @page{size:3in 1in;margin:0}
+  html,body{margin:0!important;padding:0!important;background:#fff!important}
+  #print-area{display:block!important;position:static}
+  .stk{width:3in;height:1in;box-sizing:border-box;padding:.05in .08in;display:flex;align-items:center;gap:.08in;overflow:hidden;page-break-after:always;break-after:page;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+  .stk:last-child{page-break-after:auto;break-after:auto}
+  .stk .qr{width:.9in;height:.9in;flex:none}
+  .stk .tx{flex:1;min-width:0;display:flex;flex-direction:column;justify-content:center;gap:.02in;font-family:Helvetica,Arial,sans-serif}
+  .stk .h{display:flex;align-items:center;gap:.04in;font-weight:800;font-size:7.5pt;color:#1b2a6b;border-bottom:1.5pt solid #c8102e;padding-bottom:.02in}
+  .stk .h img{width:.2in;height:.2in}
+  .stk .n{font-weight:800;font-size:11pt;line-height:1.05;color:#000;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .stk .id{font-size:10pt;font-weight:800;color:#c8102e}
+  .stk .f{font-size:5.5pt;color:#333}
 }
 </style>
 </head>
@@ -229,26 +241,39 @@ function confirmLogout() {
     '<div class="row"><button class="btn ghost" onclick="closeModal()">Cancel</button><button class="btn red" onclick="closeModal();logout()">Log out</button></div>');
 }
 function logout() {
-  store('tvac_pin', null); store('tvac_member', null); S.pin = null; S.member = null;
+  store('tvac_pin', null); store('tvac_member', null); store('tvac_cache', null); S.pin = null; S.member = null;
   $('app').classList.add('hidden'); $('login').classList.remove('hidden'); $('pin').value = '';
 }
 function startApp() {
   $('login').classList.add('hidden'); $('app').classList.remove('hidden');
   $('who').textContent = S.member.name + ' · #' + S.member.id;
   $('tab-admin').classList.toggle('hidden', !isAdmin());
+  // show last-known data instantly, then refresh from the server
+  try { var c = JSON.parse(store('tvac_cache') || 'null'); if (c && c.items) { S.items = c.items; S.cfg = c.cfg || {}; render(); } } catch (e) {}
+  if (S.pendingId && getItem(S.pendingId)) { var pid = S.pendingId; S.pendingId = null; openItem(pid); }
   refresh().then(function () {
     if (S.pendingId) { var id = S.pendingId; S.pendingId = null; openItem(id); }
   });
 }
+function quickFlags(i) { // instant local flags until the server's version arrives
+  var why = i.statusNote ? ': ' + i.statusNote : '';
+  i.flags = (i.flags || []).filter(function (f) { return !/^(Out of Service|Needs Attention|Not Available)/.test(f.text); });
+  if (i.status === 'Out of Service') i.flags.unshift({ level: 'bad', text: 'Out of Service' + why });
+  else if (i.condition === 'Needs Attention') i.flags.unshift({ level: 'warn', text: 'Needs Attention' + why });
+  if (i.status === 'Not Available') i.flags.unshift({ level: 'bad', text: 'Not Available / missing' });
+}
+function saveCache() { try { store('tvac_cache', JSON.stringify({ items: S.items, cfg: S.cfg })); } catch (e) {} }
 
 // ════════ DATA ════════
 function refresh() {
-  $('sync').textContent = '…';
-  return apiGet({ action: 'getInventory', pin: S.pin }).then(function (d) {
-    S.items = d.items; S.cfg = d.config || {};
-    $('sync').textContent = '⟳';
-    render();
-  }).catch(function (e) { $('sync').textContent = '⟳'; toast('⚠ ' + e.message); if (S.tab === 'home') render(); });
+  if (S.refreshing) return S.refreshing;
+  $('sync').innerHTML = '<span class="syncing">⟳</span>';
+  S.refreshing = apiGet({ action: 'getInventory', pin: S.pin }).then(function (d) {
+    S.items = d.items; S.cfg = d.config || {}; saveCache();
+    $('sync').textContent = '⟳'; S.refreshing = null;
+    if (!$('modal-root').innerHTML) render(); else if (S.tab === 'home') renderList();
+  }).catch(function (e) { $('sync').textContent = '⟳'; S.refreshing = null; toast('⚠ ' + e.message); });
+  return S.refreshing;
 }
 
 // ════════ ROUTER ════════
@@ -321,22 +346,25 @@ function renderList() {
 }
 function itemRow(i) {
   var w = worst(i.flags);
-  var extra = i.type === 'Oxygen Tank' && i.psi !== '' ? ' · ' + i.psi + ' PSI' : i.type === 'First Responder Bag' && i.seal ? ' · Seal ' + esc(i.seal) : '';
+  var extra = '';
   return '<div class="item' + (i.status === 'Out of Service' ? ' oos' : '') + '" onclick="openItem(\'' + esc(i.id) + '\')"><div class="ic">' + TYPE_META[i.type].icon + '</div>' +
     '<div class="mid"><div class="nm">' + esc(i.name) + ' ' + (w ? '<span class="dot ' + w + '" style="display:inline-block"></span>' : '') + '</div>' +
-    '<div class="sub">' + esc(i.id) + ' · ' + esc(whereText(i)) + extra + '</div></div>' + statusBadge(i) + '</div>';
+    '<div class="sub">' + esc(i.id) + ' · ' + esc(whereText(i)) + extra + '</div></div>' +
+    (i.condition === 'Needs Attention' && i.status !== 'Out of Service' ? '<span class="badge b-warn" style="margin-right:4px">⚠ Attention</span>' : '') + statusBadge(i) + '</div>';
 }
 
 // ════════ ITEM DETAIL ════════
 function openItem(id) {
-  var local = getItem(id);
-  showModal('<div class="spinner"></div>');
+  var local = getItem(id), token = S.openTok = (S.openTok || 0) + 1;
+  // show what we already have instantly; fetch fresh status + history in the background
+  showModal(local ? itemHtml(local, 'loading') : '<div class="spinner"></div>');
   apiGet({ action: 'getItem', id: id, pin: S.pin }).then(function (d) {
     var idx = S.items.findIndex(function (i) { return i.id === d.item.id; });
     if (idx >= 0) S.items[idx] = d.item; else S.items.push(d.item);
-    showModal(itemHtml(d.item, d.log));
+    if (S.openTok === token && $('modal-root').innerHTML && !$('f-go')) showModal(itemHtml(d.item, d.log));
   }).catch(function (e) {
-    if (local) showModal(itemHtml(local, null)); else { closeModal(); toast('⚠ ' + e.message); }
+    if (S.openTok !== token) return;
+    if (local) { if (!$('f-go')) showModal(itemHtml(local, null)); } else { closeModal(); toast('⚠ ' + e.message); }
   });
 }
 function itemHtml(i, log) {
@@ -344,20 +372,16 @@ function itemHtml(i, log) {
   var kv = [['ID', esc(i.id)], ['Status', statusBadge(i)],
     [out ? 'Assigned to' : 'Location', esc(out ? i.location : i.status === 'Not Available' ? 'Not in location' : (i.location || i.homeLocation || '—'))], ['Home', esc(i.homeLocation || '—')],
     ['Condition', '<span class="badge ' + (i.condition === 'OK' ? 'b-ok' : i.condition === 'Out of Service' ? 'b-bad' : 'b-warn') + '">' + esc(i.condition) + '</span>']];
-  if (i.type === 'First Responder Bag') kv.push(['Seal #', esc(i.seal || '—')]);
-  if (i.type === 'Oxygen Tank') {
-    var mins = o2Minutes(i.psi, i.o2Size, 15);
-    kv.push(['Size', esc(i.o2Size || '—')], ['Pressure', i.psi !== '' ? i.psi + ' PSI' + (mins !== null ? ' <span class="hint">(≈' + mins + ' min @15 LPM)</span>' : '') : '—'], ['Hydro test', esc(i.hydroDate ? i.hydroDate.slice(0, 7) : '—')]);
-  }
-  if (i.type === 'AED') kv.push(['Model', esc(i.aedModel || '—')], ['Serial', esc(i.serial || '—')], ['Adult pads exp', esc(i.padsExp || '—')], ['Peds pads exp', esc(i.pedsPadsExp || '—')], ['Battery exp', esc(i.batteryExp || '—')]);
+  if (i.type === 'AED') kv.push(['Serial', esc(i.serial || '—')], ['Adult pads exp', esc(i.padsExp || '—')], ['Peds pads exp', esc(i.pedsPadsExp || '—')], ['Battery exp', esc(i.batteryExp || '—')]);
   kv.push(['Last inspected', i.lastInspected ? fmtTs(i.lastInspected) : 'Never'], ['Last activity', ago(i.lastUpdated) + (i.lastMember ? ' · #' + esc(i.lastMember) : '')]);
   if (i.notes) kv.push(['Notes', esc(i.notes)]);
 
   var banner = i.status === 'Out of Service' ? '<div class="oos-banner"><div class="big">⛔ OUT OF SERVICE</div><div class="why">DO NOT USE' + (i.statusNote ? ' — ' + esc(i.statusNote) : '') + '</div></div>'
+    : i.condition === 'Needs Attention' ? '<div class="oos-banner warn-banner"><div class="big">⚠ NEEDS ATTENTION</div>' + (i.statusNote ? '<div class="why">' + esc(i.statusNote) + '</div>' : '') + '</div>'
     : i.status === 'Not Available' ? '<div class="oos-banner na-banner"><div class="big">❓ NOT IN LOCATION</div>' + (i.statusNote ? '<div class="why">' + esc(i.statusNote) + '</div>' : '') + '</div>' : '';
-  var flags = i.flags.filter(function (f) { return f.text !== 'Out of Service' && f.text !== 'Not Available / missing'; })
+  var flags = i.flags.filter(function (f) { return !/^(Out of Service|Needs Attention|Not Available)/.test(f.text); })
     .map(function (f) { return '<div class="flag ' + f.level + '">⚠ ' + esc(f.text) + '</div>'; }).join('');
-  var hist = log ? (log.length ? log.map(logRow).join('') : '<div class="hint">No history yet</div>') : '<div class="hint">History unavailable offline</div>';
+  var hist = log === 'loading' ? '<div class="hint">Loading history…</div>' : log ? (log.length ? log.map(logRow).join('') : '<div class="hint">No history yet</div>') : '<div class="hint">History unavailable right now</div>';
   var inactive = !i.active ? '<div class="oos-banner na-banner"><div class="big">⏸ INACTIVE</div><div class="why">This sticker is not in use' + (isAdmin() ? ' — tap Activate below to turn it back on' : '') + '</div></div>' : '';
 
   return '<div style="display:flex;align-items:center;gap:10px;margin-bottom:8px"><span style="font-size:30px">' + m.icon + '</span>' +
@@ -369,6 +393,7 @@ function itemHtml(i, log) {
            : '<button class="btn red" onclick="actionForm(\'' + esc(i.id) + '\',\'OUT\')">↗ Sign OUT</button>') +
       '<button class="btn" onclick="inspectForm(\'' + esc(i.id) + '\')">📋 Inspect</button></div>' +
       '<div class="row" style="margin-bottom:12px">' +
+      (i.condition === 'Needs Attention' && i.status === 'Available' ? '<button class="btn ghost sm" style="width:100%;color:var(--ok)" onclick="statusForm(\'' + esc(i.id) + '\',\'Available\')">✓ Fixed — mark OK</button>' : '') +
       (i.status !== 'Out of Service' ? '<button class="btn ghost sm" style="width:100%" onclick="statusForm(\'' + esc(i.id) + '\',\'Out of Service\')">⛔ Out of Service</button>' : '') +
       (i.status === 'Not Available' ? '<button class="btn ghost sm" style="width:100%" onclick="statusForm(\'' + esc(i.id) + '\',\'Available\')">✅ Found — Available</button>'
         : '<button class="btn ghost sm" style="width:100%" onclick="statusForm(\'' + esc(i.id) + '\',\'Not Available\')">❓ Not in location</button>') +
@@ -393,7 +418,6 @@ function actionForm(id, status) {
   var dl = '<datalist id="locs">' + locations().map(function (l) { return '<option value="' + esc(l) + '">'; }).join('') + '</datalist>';
   var extra = '';
   if (out) extra = '';
-  else if (i.type === 'Oxygen Tank') extra = '<label>Pressure now (PSI, optional)</label><input id="f-psi" type="number" inputmode="numeric" placeholder="e.g. 2000" value="' + (i.psi !== '' ? i.psi : '') + '" oninput="o2Hint(\'' + esc(i.o2Size || '') + '\')"><div id="o2h"></div>';
   else if (i.type === 'First Responder Bag') extra = '<label>Used / needs restock (optional)</label><input id="f-used" placeholder="e.g. 2 NPA, gauze">';
   else if (i.type === 'AED') extra = '<div class="checks"><label class="ck"><input type="checkbox" id="f-padsused"> Pads were used (replace)</label></div>';
 
@@ -422,15 +446,22 @@ function submitAction(id, status) {
   if ($('f-cond')) b.condition = $('f-cond').value;
   if ($('f-padsused') && $('f-padsused').checked) { b.condition = 'Needs Attention'; b.notes = ('Pads used — replace. ' + b.notes).trim(); }
   if (i.type === 'Oxygen Tank' && status === 'IN' && b.psi !== undefined && b.psi <= (S.cfg.EMPTY_PSI || 500) && b.condition === 'OK') b.condition = 'Needs Attention';
-  busy(true);
-  apiPost(b).then(function (d) { updateLocal(d.item); closeModal(); toast((status === 'OUT' ? '↗ Signed out: ' : '✓ Signed in: ') + i.name); render(); })
-    .catch(function (e) { busy(false); toast('⚠ ' + e.message, 4000); });
+  // optimistic: update the screen right away, save in the background
+  var before = JSON.parse(JSON.stringify(i)), out = status === 'OUT', cond = b.condition || i.condition || 'OK';
+  i.status = out ? 'Assigned' : (cond === 'Out of Service' ? 'Out of Service' : 'Available');
+  i.location = out ? S.member.name + ' (#' + S.member.id + ')' : (i.homeLocation || HOME_LOCATION);
+  i.lastMember = S.member.id; i.lastUpdated = new Date().toISOString(); i.condition = cond;
+  if (!out) i.statusNote = cond !== 'OK' ? (b.notes || cond) : '';
+  quickFlags(i);
+  closeModal(); toast((out ? '↗ Signed out: ' : '✓ Signed in: ') + i.name); render();
+  apiPost(b).then(function (d) { updateLocal(d.item); saveCache(); if (!$('modal-root').innerHTML) render(); })
+    .catch(function (e) { updateLocal(before); render(); toast('⚠ Not saved: ' + e.message, 5000); });
 }
 
 // ════════ STATUS CHANGE ════════
 function statusForm(id, st) {
   var i = getItem(id), need = st !== 'Available';
-  var title = { 'Out of Service': '⛔ Mark Out of Service', 'Not Available': '❓ Mark Not in Location', 'Available': '✅ Mark Available' }[st];
+  var title = { 'Out of Service': '⛔ Mark Out of Service', 'Not Available': '❓ Mark Not in Location', 'Available': i.condition === 'Needs Attention' && i.status === 'Available' ? '✓ Mark fixed / OK' : '✅ Mark Available' }[st];
   var ph = { 'Out of Service': 'e.g. Battery needs replacing, regulator leaking', 'Not Available': 'e.g. Not on shelf, last seen on rig 45-10', 'Available': 'e.g. Battery replaced / found in supply room' }[st];
   showModal('<h3>' + title + ' — ' + esc(i.name) + '</h3><div class="hint">' + esc(i.id) + '</div>' +
     '<label>' + (need ? 'Reason *' : 'Note (optional)') + '</label><textarea id="f-notes" placeholder="' + esc(ph) + '"></textarea>' +
@@ -440,17 +471,22 @@ function statusForm(id, st) {
 function submitStatus(id, st) {
   var notes = $('f-notes').value.trim();
   if (st !== 'Available' && !notes) { toast('Enter a reason'); return; }
-  busy(true);
-  apiPost({ action: 'setStatus', id: id, status: st, notes: notes }).then(function (d) { updateLocal(d.item); closeModal(); toast('✓ ' + d.item.name + ': ' + st); render(); })
-    .catch(function (e) { busy(false); toast('⚠ ' + e.message, 4000); });
+  var i = getItem(id), before = JSON.parse(JSON.stringify(i));
+  i.status = st; i.statusNote = st === 'Available' ? '' : notes; i.lastMember = S.member.id; i.lastUpdated = new Date().toISOString();
+  if (st === 'Out of Service') i.condition = 'Out of Service';
+  if (st === 'Available') { i.condition = 'OK'; i.location = i.homeLocation || HOME_LOCATION; }
+  if (st === 'Not Available') i.location = 'Unknown';
+  quickFlags(i);
+  closeModal(); toast('✓ ' + i.name + ': ' + (st === 'Available' && before.condition === 'Needs Attention' ? 'marked OK' : st)); render();
+  apiPost({ action: 'setStatus', id: id, status: st, notes: notes }).then(function (d) { updateLocal(d.item); saveCache(); if (!$('modal-root').innerHTML) render(); })
+    .catch(function (e) { updateLocal(before); render(); toast('⚠ Not saved: ' + e.message, 5000); });
 }
 
 // ════════ INSPECTION ════════
 function inspectForm(id) {
   var i = getItem(id), m = TYPE_META[i.type];
   var fields = '';
-  if (i.type === 'First Responder Bag') fields = '<label>Seal #</label><input id="f-seal" value="' + esc(i.seal) + '"><label>Items used / restocked</label><input id="f-used" placeholder="Optional">';
-  if (i.type === 'Oxygen Tank') fields = '<label>Pressure (PSI) *</label><input id="f-psi" type="number" inputmode="numeric" value="' + (i.psi !== '' ? i.psi : '') + '" oninput="o2Hint(\'' + esc(i.o2Size || '') + '\')"><div id="o2h"></div>';
+  if (i.type === 'First Responder Bag') fields = '<label>Items used / restocked</label><input id="f-used" placeholder="Optional">';
   if (i.type === 'AED') fields = '<div class="row"><div><label>Adult pads exp.</label><input id="f-pads" type="date" value="' + esc(i.padsExp) + '"></div><div><label>Peds pads exp.</label><input id="f-peds" type="date" value="' + esc(i.pedsPadsExp) + '"></div></div>' +
     '<label>Battery exp. / install date</label><input id="f-batt" type="date" value="' + esc(i.batteryExp) + '">';
 
@@ -473,11 +509,6 @@ function submitInspect(id) {
   var i = getItem(id);
   var checks = {}; document.querySelectorAll('[data-ck]').forEach(function (b) { checks[b.dataset.ck] = b.checked; });
   var b = { action: 'inspect', id: id, checks: checks, condition: $('f-cond').value, notes: $('f-notes').value.trim() };
-  if (i.type === 'Oxygen Tank') {
-    if ($('f-psi').value === '') { toast('Enter the tank pressure'); return; }
-    b.psi = Number($('f-psi').value);
-  }
-  if ($('f-seal')) b.seal = $('f-seal').value.trim();
   if ($('f-used') && $('f-used').value.trim()) b.used = $('f-used').value.trim();
   if ($('f-pads')) { b.padsExp = $('f-pads').value; b.pedsPadsExp = $('f-peds').value; b.batteryExp = $('f-batt').value; }
   if (b.condition !== 'OK' && !b.notes) { toast('Add a note explaining what needs attention'); $('f-notes').focus(); return; }
@@ -554,11 +585,7 @@ function editItemForm(id) {
 function typeFieldsFor(type, i) {
   i = i || {};
   var h = '';
-  if (type === 'First Responder Bag') h = '<label>Seal #</label><input id="e-seal" value="' + esc(i.seal || '') + '">';
-  if (type === 'Oxygen Tank') h = '<div class="row"><div><label>Cylinder size</label><select id="e-size">' + Object.keys(O2_FACTORS).map(function (s) { return '<option' + (s === (i.o2Size || 'D') ? ' selected' : '') + '>' + s + '</option>'; }).join('') + '</select></div>' +
-    '<div><label>Pressure (PSI)</label><input id="e-psi" type="number" inputmode="numeric" value="' + (i.psi !== undefined && i.psi !== '' ? i.psi : '') + '"></div></div>' +
-    '<label>Last hydro test (month stamped on tank)</label><input id="e-hydro" type="month" value="' + esc((i.hydroDate || '').slice(0, 7)) + '">';
-  if (type === 'AED') h = '<div class="row"><div><label>Model</label><input id="e-model" value="' + esc(i.aedModel || '') + '" placeholder="e.g. ZOLL AED Plus"></div><div><label>Serial #</label><input id="e-serial" value="' + esc(i.serial || '') + '"></div></div>' +
+  if (type === 'AED') h = '<label>Serial #</label><input id="e-serial" value="' + esc(i.serial || '') + '">' +
     '<div class="row"><div><label>Adult pads exp.</label><input id="e-pads" type="date" value="' + esc(i.padsExp || '') + '"></div><div><label>Peds pads exp.</label><input id="e-peds" type="date" value="' + esc(i.pedsPadsExp || '') + '"></div></div>' +
     '<label>Battery exp.</label><input id="e-batt" type="date" value="' + esc(i.batteryExp || '') + '">';
   $('e-typefields').innerHTML = h;
@@ -568,9 +595,7 @@ function saveItem(id) {
   var b = { action: id ? 'updateItem' : 'addItem', type: type, name: $('e-name').value.trim(), homeLocation: $('e-home').value.trim(), notes: $('e-notes').value.trim() };
   if (id) { b.id = id; b.condition = $('e-cond').value; } else if ($('e-id').value.trim()) b.id = $('e-id').value.trim().toUpperCase();
   if (!b.name) { toast('Name required'); return; }
-  if (type === 'First Responder Bag') b.seal = $('e-seal').value.trim();
-  if (type === 'Oxygen Tank') { b.o2Size = $('e-size').value; if ($('e-psi').value !== '') b.psi = Number($('e-psi').value); b.hydroDate = $('e-hydro').value ? $('e-hydro').value + '-01' : ''; }
-  if (type === 'AED') { b.aedModel = $('e-model').value.trim(); b.serial = $('e-serial').value.trim(); b.padsExp = $('e-pads').value; b.pedsPadsExp = $('e-peds').value; b.batteryExp = $('e-batt').value; }
+  if (type === 'AED') { b.serial = $('e-serial').value.trim(); b.padsExp = $('e-pads').value; b.pedsPadsExp = $('e-peds').value; b.batteryExp = $('e-batt').value; }
   busy(true);
   apiPost(b).then(function (d) {
     toast(id ? '✓ Saved' : '✓ Added ' + d.id);
@@ -586,7 +611,7 @@ function qrUrlFor(id) { return APP_URL + '?id=' + encodeURIComponent(id); }
 function qrImg(text) { var q = qrcode(0, 'M'); q.addData(text); q.make(); return q.createDataURL(6, 2); }
 function stickerPicker() {
   var act = S.items.filter(function (i) { return i.active; });
-  showModal('<h3>🖨 QR stickers</h3><div class="hint">Pick items, then print (3 per row). Stickers link to ' + esc(APP_URL) + '</div>' +
+  showModal('<h3>🖨 QR stickers</h3><div class="hint">Prints one 1 × 3 in label per page. In the print window choose your label printer and paper size 3 × 1 in, scale 100%.</div>' +
     '<div class="checks" style="margin:10px 0">' + TYPES.map(function (t) {
       var l = act.filter(function (i) { return i.type === t; });
       return l.length ? '<div style="font-weight:800;margin-top:10px">' + TYPE_META[t].icon + ' ' + t + '</div>' + l.map(function (i) { return '<label class="ck"><input type="checkbox" data-stk="' + esc(i.id) + '" checked> ' + esc(i.name) + ' <span class="hint">' + esc(i.id) + '</span></label>'; }).join('') : '';
@@ -597,7 +622,7 @@ function printStickers(ids) {
   if (!ids.length) { toast('Select at least one item'); return; }
   $('print-area').innerHTML = ids.map(function (id) {
     var i = getItem(id) || { id: id, name: id, type: '' };
-    return '<div class="stk"><div class="h"><img src="logo.png">TVAC EQUIPMENT</div><img src="' + qrImg(qrUrlFor(id)) + '"><div class="n">' + esc(i.name) + '</div><div class="id">' + esc(id) + '</div><div class="f">Scan to sign out · sign in · inspect</div></div>';
+    return '<div class="stk"><img class="qr" src="' + qrImg(qrUrlFor(id)) + '"><div class="tx"><div class="h"><img src="logo.png">TVAC EQUIPMENT</div><div class="n">' + esc(i.name) + '</div><div class="id">' + esc(id) + '</div><div class="f">Scan to sign out · sign in</div></div></div>';
   }).join('');
   setTimeout(function () { window.print(); }, 300);
 }
