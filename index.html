@@ -746,13 +746,14 @@ function stickerPicker(pre) {
       return l.length ? '<div style="display:flex;align-items:center;justify-content:space-between;margin-top:12px"><b>' + TYPE_META[t].icon + ' ' + t + ' (' + l.length + ')</b><button class="btn ghost sm" onclick="stkAll(true,\'' + t + '\')">Select all</button></div>' +
         l.map(function (i) { return '<label class="ck"><input type="checkbox" data-stk="' + esc(i.id) + '" data-type="' + esc(t) + '" onchange="stkCount()"' + (pre.indexOf(i.id) >= 0 ? ' checked' : '') + '> ' + esc(i.name) + ' <span class="hint">' + esc(i.id) + '</span></label>'; }).join('') : '';
     }).join('') + '</div>' +
-    '<div class="row" style="position:sticky;bottom:0;background:#fff;padding-top:8px"><button class="btn ghost" onclick="closeModal()">Cancel</button><button class="btn" id="stk-go" onclick="stkGo()">Print (0)</button></div>');
+    '<div class="row" style="position:sticky;bottom:0;background:#fff;padding-top:8px"><button class="btn ghost" onclick="closeModal()">Cancel</button><button class="btn ghost" onclick="stkGo(true)">⬇ Download</button><button class="btn" id="stk-go" onclick="stkGo()">Print (0)</button></div>');
   stkMode(); stkCount();
 }
-function stkGo() {
+function stkGo(dl) {
   var ids = [].map.call(document.querySelectorAll('[data-stk]:checked'), function (c) { return c.dataset.stk; });
   if (!ids.length) { toast('Select at least one item'); return; }
-  if ($('stk-sheet').checked) stickerPdf(ids, { sheet: true, start: Math.max(1, Number($('stk-start').value) || 1) });
+  var sheet = $('stk-sheet').checked;
+  if (sheet || dl) stickerPdf(ids, { sheet: sheet, start: Math.max(1, Number($('stk-start').value) || 1), download: dl });
   else printStickers(ids);
 }
 function stkAll(on, type) {
@@ -792,6 +793,21 @@ function stickerCanvas(it, logo) {
   x.fillStyle = '#333'; x.font = (5.5 / 72 * D) + 'px Helvetica,Arial,sans-serif'; x.fillText('Scan to sign out · sign in', tx, y + .55 * D);
   return c;
 }
+function saveBlob(blob, name) { var a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = name; document.body.appendChild(a); a.click(); setTimeout(function () { a.remove(); }, 1000); return a.href; }
+function stickerZip(ids) {
+  var b = $('zip-btn'); if (b) { b.disabled = true; b.textContent = 'Making images…'; }
+  Promise.all([ids.length > 1 && !window.JSZip ? loadScript('https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js') : 0, loadImg('logo.png')]).then(function (r) {
+    var toBlob = function (cv) { return new Promise(function (ok) { cv.toBlob(ok, 'image/png'); }); };
+    var cvs = ids.map(function (id) { return stickerCanvas(getItem(id) || { id: id, name: id }, r[1]); });
+    if (ids.length === 1) return toBlob(cvs[0]).then(function (bl) { return [bl, 'TVAC-sticker-' + ids[0] + '.png']; });
+    var z = new JSZip();
+    return Promise.all(cvs.map(toBlob)).then(function (bls) { bls.forEach(function (bl, k) { z.file(ids[k] + '.png', bl); }); return z.generateAsync({ type: 'blob' }); })
+      .then(function (bl) { return [bl, 'TVAC-stickers.zip']; });
+  }).then(function (res) {
+    var href = saveBlob(res[0], res[1]);
+    if (b) { var a = document.createElement('a'); a.className = 'btn ghost'; a.style.cssText = 'display:block;text-align:center;text-decoration:none;margin-bottom:8px'; a.href = href; a.download = res[1]; a.textContent = '🖼 Save ' + res[1]; b.replaceWith(a); }
+  }).catch(function (e) { toast('⚠ ' + e.message, 5000); if (b) { b.disabled = false; b.textContent = '🖼 Try images again'; } });
+}
 function rotateCanvas(src) { // portrait label: turn the 3×1 design on its side (reads bottom-to-top)
   var c = document.createElement('canvas'); c.width = src.height; c.height = src.width; var x = c.getContext('2d');
   x.translate(0, c.height); x.rotate(-Math.PI / 2); x.drawImage(src, 0, 0); return c;
@@ -828,6 +844,15 @@ function stickerPdf(ids, o) {
     var file = new File([blob], name, { type: 'application/pdf' }), url = URL.createObjectURL(blob);
     window._stkFile = file;
     var canShare = navigator.canShare && navigator.canShare({ files: [file] });
+    window._stkIds = ids;
+    var dlBtns = '<a class="btn" style="display:block;text-align:center;text-decoration:none;margin-bottom:8px" href="' + url + '" download="' + name + '">⬇ Download PDF</a>' +
+      (ids.length ? '<button class="btn ghost" style="margin-bottom:8px" id="zip-btn" onclick="stickerZip(window._stkIds)">🖼 Download as images' + (ids.length > 1 ? ' (.zip)' : ' (.png)') + '</button>' : '');
+    if (o.download) {
+      showModal('<h3>⬇ ' + ids.length + ' sticker' + (ids.length > 1 ? 's' : '') + ' ready</h3><div class="hint" style="margin-bottom:12px">' + (o.sheet ? 'PDF is laid out on the sticker sheet.' : 'PDF has one 3 × 1 in sticker per page.') + ' Images are one PNG per sticker (3 × 1 in at 300 dpi).</div>' + dlBtns +
+        (canShare ? '<button class="btn ghost" style="margin-bottom:8px" onclick="navigator.share({files:[window._stkFile]}).catch(function(){})">📤 Share / Save to Files</button>' : '') +
+        '<button class="btn ghost" onclick="stickerPicker()">Back</button>');
+      return;
+    }
     var title = o.test ? '📐 Test sheet ready' : '🖨 ' + ids.length + ' sticker' + (ids.length > 1 ? 's' : '') + ' ready' + (o.sheet ? ' (' + pages + ' sheet' + (pages > 1 ? 's' : '') + ')' : '');
     showModal('<h3>' + title + '</h3><div class="hint" style="margin-bottom:12px">' +
       (canShare ? 'Tap <b>Share / Print</b>, then choose <b>Print</b>. ' : 'Open the PDF, then print it. ') +
