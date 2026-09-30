@@ -407,7 +407,7 @@ function openItem(id) {
   // fixed-height sheet + cached history = nothing jumps when fresh data lands
   if (!S.logs) { try { S.logs = JSON.parse(localStorage.getItem('tvac_hist') || '{}'); } catch (e) { S.logs = {}; } }
   var shown = local ? JSON.stringify(local) : '';
-  showModal(local ? itemHtml(local, S.logs[id] || 'loading') : '<div class="spinner"></div>', 'tall');
+  showModal(local ? itemHtml(local, S.logs[id] || 'loading') : '<div class="spinner"></div>');
   apiGet({ action: 'getItem', id: id, pin: S.pin }).then(function (d) {
     var idx = S.items.findIndex(function (i) { return i.id === d.item.id; });
     if (idx >= 0) S.items[idx] = d.item; else S.items.push(d.item);
@@ -487,7 +487,6 @@ function actionForm(id, status) {
   if (out) { var kk0 = i.type === 'First Responder Bag' && kindOf(i), need = kk0 && kk0.also ? kk0.also : [];
     if (need.length) extra = '<div class="o2calc" style="margin-top:8px">📦 This bag also needs: <b>' + need.map(esc).join(' + ') + '</b> — scan ' + (need.length > 1 ? 'each one' : 'it') + ' out separately and put ' + (need.length > 1 ? 'them' : 'it') + ' in the bag.</div>';
   }
-  else if (i.type === 'First Responder Bag') extra = '<label>Used / needs restock (optional)</label><input id="f-used" placeholder="e.g. 2 NPA, gauze">';
   else if (i.type === 'AED') extra = '<label>AED is…</label><div class="checks"><label class="ck"><input type="radio" name="aedst" id="f-aedok" checked> 🔋 Charged — available</label><label class="ck"><input type="radio" name="aedst" id="f-aedcharge"> 🪫 Needs charge — needs attention</label></div>' +
     '<div class="checks"><label class="ck"><input type="checkbox" id="f-padsused"> Pads were used (replace) — needs attention</label></div>';
   else if (i.type === 'Oxygen Tank') extra = '<label>Tank is…</label><div class="checks"><label class="ck"><input type="radio" name="o2st" id="f-o2full" checked> ✅ Full — back at station, available</label><label class="ck"><input type="radio" name="o2st" id="f-o2empty"> 🪫 Empty — needs attention (refill)</label></div>';
@@ -1043,9 +1042,9 @@ function updateLocal(item) { var idx = S.items.findIndex(function (i) { return i
   }
   if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(function () {});
   // pick up changes made in the Google Sheet: every 60s, and whenever the app comes back to the foreground
-  setInterval(function () { if (S.pin && (!document.hidden || notifOn()) && !$('modal-root').innerHTML) refresh(); }, 60000);
+  setInterval(function () { if (S.pin && (!document.hidden || notifOn())) refresh(); }, 60000); // keeps checking even with an item page open
   if (navigator.serviceWorker) navigator.serviceWorker.addEventListener('message', function (e) { if (e.data && e.data.type === 'open' && e.data.id && S.pin) openItem(e.data.id); });
-  document.addEventListener('visibilitychange', function () { if (!document.hidden && S.pin && !$('modal-root').innerHTML) refresh(); });
+  document.addEventListener('visibilitychange', function () { if (!document.hidden && S.pin) refresh(); });
 })();
 </script>
 </body>
