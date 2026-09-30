@@ -360,7 +360,7 @@ function glanceHtml(active) {
     return '<div class="who" onclick="setFilter(\'Assigned\')"><b>👤 ' + esc(k) + '</b>' + by[k].map(function (i) { return '<span>' + itemIcon(i) + ' ' + esc(i.name) + ' — out since ' + fmtTs(i.lastUpdated) + '</span>'; }).join('') + '</div>';
   }).join('');
   return '<div class="card"><h2 style="margin-bottom:0">At a glance <span class="hint" style="font-weight:500">· ' + active.length + ' items</span></h2>' +
-    '<div class="glance">' + box('Available', 'av', 'Available') + box('Assigned', 'as', 'Signed out') + box('Out of Service', 'warn', '⚠ Needs attention') + '</div>' +
+    '<div class="glance" style="grid-template-columns:repeat(3,1fr)">' + box('Available', 'av', 'Available') + box('Assigned', 'as', 'Signed out') + box('Out of Service', 'warn', '⚠ Needs attention') + '</div>' +
     (function () {
       var g = {}; alertGroups().forEach(function (x) { g[x.key] = x.items.length; });
       var ab = function (n, cls, lbl) { return '<div class="gl ' + cls + '" onclick="go(\'alerts\')"><div class="n">' + n + '</div><div class="l">' + lbl + '</div></div>'; };
