@@ -202,10 +202,7 @@ var STATUS_META = {
 };
 var STATUSES = Object.keys(STATUS_META);
 function statusBadge(i) { var m = STATUS_META[i.status] || STATUS_META['Available']; return '<span class="badge ' + m.cls + '">' + m.short + '</span>'; }
-function bagOf(i) { return i && i.inBag ? getItem(i.inBag) : null; }
-function bagContents(b) { return S.items.filter(function (x) { return x.active && x.inBag && x.inBag === b.id; }); }
-function itemLink(x) { return '<a href="#" onclick="event.preventDefault();openItem(\'' + esc(x.id) + '\')" style="color:var(--navy);font-weight:700">' + esc(x.name) + '</a>'; }
-function whereText(i) { var bg = bagOf(i); if (bg && i.status === 'Available') return '🎒 In ' + bg.name; if (bg && i.status === 'Assigned') return '👤 ' + (i.location || '—') + ' · 🎒 in ' + bg.name; return i.status === 'Assigned' ? '👤 ' + (i.location || '—') : i.status === 'Not Available' ? '❓ Not in location' : '📍 ' + (i.location || i.homeLocation || '—'); }
+function whereText(i) { return i.status === 'Assigned' ? '👤 ' + (i.location || '—') : i.status === 'Not Available' ? '❓ Not in location' : '📍 ' + (i.location || i.homeLocation || '—'); }
 
 // ════════ STATE ════════
 var S = { pin: null, member: null, items: [], cfg: {}, filter: 'All', q: '', tab: 'home', pendingId: null };
@@ -411,12 +408,7 @@ function itemHtml(i, log) {
   var kv = [['ID', esc(i.id)], ['Status', statusBadge(i)],
     [out ? 'Assigned to' : 'Location', esc(out ? i.location : i.status === 'Not Available' ? 'Not in location' : (i.location || i.homeLocation || '—'))], ['Home', esc(i.homeLocation || '—')],
     ['Condition', '<span class="badge ' + (i.condition === 'OK' ? 'b-ok' : i.condition === 'Out of Service' ? 'b-bad' : 'b-warn') + '">' + esc(i.condition) + '</span>']];
-  if (i.type === 'First Responder Bag') {
-    kv.push(['Bag kind', kindTag(i) || '<span class="hint">Not set</span>']);
-    var inside = bagContents(i);
-    if (inside.length) kv.push(['Contains', inside.map(function (x) { return TYPE_META[x.type].icon + ' ' + itemLink(x); }).join('<br>')]);
-  }
-  if (bagOf(i)) kv.push(['Stored in', itemIcon(bagOf(i)) + ' ' + itemLink(bagOf(i))]);
+  if (i.type === 'First Responder Bag') kv.push(['Bag kind', kindTag(i) || '<span class="hint">Not set</span>']);
   if (i.type === 'AED') kv.push(['Serial', esc(i.serial || '—')], ['Adult pads exp', esc(i.padsExp || '—')], ['Peds pads exp', esc(i.pedsPadsExp || '—')], ['Battery exp', esc(i.batteryExp || '—')]);
   kv.push(['Last inspected', i.lastInspected ? fmtTs(i.lastInspected) : 'Never'], ['Last activity', ago(i.lastUpdated) + (i.lastMember ? ' · #' + esc(i.lastMember) : '')]);
   if (i.notes) kv.push(['Permanent notes', esc(i.notes)]);
@@ -479,7 +471,8 @@ function actionForm(id, status) {
   var defFor = (!out && holderId(i)) || S.member.id, defName = (!out && holderId(i)) ? i.location : S.member.name + ' (#' + S.member.id + ') — me';
   var dl = '<datalist id="locs">' + locations().map(function (l) { return '<option value="' + esc(l) + '">'; }).join('') + '</datalist>';
   var extra = '';
-  if (out) extra = '';
+  if (out) extra = i.type === 'First Responder Bag' && kindChecks(i).some(function (c) { return /AED/i.test(c); })
+    ? '<div class="o2calc" style="margin-top:8px">⚡ This bag has an AED pocket — scan out an AED separately and put it in the bag.</div>' : '';
   else if (i.type === 'First Responder Bag') extra = '<label>Used / needs restock (optional)</label><input id="f-used" placeholder="e.g. 2 NPA, gauze">';
   else if (i.type === 'AED') extra = '<div class="checks"><label class="ck"><input type="checkbox" id="f-padsused"> Pads were used (replace)</label></div>';
 
@@ -487,8 +480,6 @@ function actionForm(id, status) {
     (isAdmin() ? '<label>' + (out ? 'Sign out to' : 'Returned by') + '</label><select id="f-for"><option value="' + esc(defFor) + '">' + esc(defName) + '</option></select>' +
       '<div class="hint" style="margin-top:4px">Admin: choose the member who ' + (out ? 'is taking' : 'used') + ' it. History shows them, entered by you.</div>'
       : '<div class="o2calc" style="margin-top:10px">👤 ' + (out ? 'Signing out to ' : 'Returned by ') + esc(S.member.name) + ' (#' + esc(S.member.id) + ')</div>') +
-    (function () { var c = i.type === 'First Responder Bag' ? bagContents(i).filter(function (x) { return out ? x.status === 'Available' : x.status === 'Assigned'; }) : [];
-      return c.length ? '<div class="o2calc" style="margin-top:8px">🎒 Also ' + (out ? 'signs out' : 'signs in') + ' what\'s inside: ' + c.map(function (x) { return esc(x.name); }).join(', ') + '</div>' : ''; })() +
     extra +
     (!out ? '<label>Condition</label><select id="f-cond">' + CONDITIONS.map(function (c) { return '<option' + (c === i.condition ? ' selected' : '') + '>' + c + '</option>'; }).join('') + '</select>' : '') +
     (out ? '<input id="f-notes" type="hidden" value="">' : '<label>Notes (optional)</label><textarea id="f-notes"></textarea>') +
@@ -523,12 +514,8 @@ function submitAction(id, status) {
   if (!out) i.statusNote = cond !== 'OK' ? (b.notes || cond) : '';
   quickFlags(i);
   closeModal(); toast((out ? '↗ Signed out: ' : '✓ Signed in: ') + i.name); render();
-  var kids = i.type === 'First Responder Bag' ? bagContents(i).filter(function (x) { return out ? x.status === 'Available' : x.status === 'Assigned'; }) : [];
-  var kidsBefore = JSON.parse(JSON.stringify(kids));
-  kids.forEach(function (x) { x.status = out ? 'Assigned' : 'Available'; x.location = out ? i.location : (x.homeLocation || HOME_LOCATION); x.lastMember = who.id; });
-  if (kids.length) render();
-  apiPost(b).then(function (d) { updateLocal(d.item); saveCache(); if (d.moved && d.moved.length) refresh(); else if (!$('modal-root').innerHTML) render(); })
-    .catch(function (e) { updateLocal(before); kidsBefore.forEach(updateLocal); render(); toast('⚠ Not saved: ' + e.message, 5000); });
+  apiPost(b).then(function (d) { updateLocal(d.item); saveCache(); if (!$('modal-root').innerHTML) render(); })
+    .catch(function (e) { updateLocal(before); render(); toast('⚠ Not saved: ' + e.message, 5000); });
 }
 
 // ════════ STATUS CHANGE ════════
@@ -761,39 +748,15 @@ function editItemForm(id) {
     (id ? '<button class="btn ghost" style="margin-top:10px;color:' + (i.active ? 'var(--bad)' : 'var(--ok)') + '" onclick="toggleActive(\'' + esc(id) + '\',' + !i.active + ')">' + (i.active ? '⏸ Deactivate item' : '▶ Activate item') + '</button>' : ''));
   typeFieldsFor(i.type, i);
 }
-function linkSel(t, bag) {
-  var cur = bag.id ? bagContents(bag).filter(function (x) { return x.type === t; })[0] : null;
-  var list = S.items.filter(function (x) { return x.type === t && x.active; }).sort(function (a, b) { return a.id.localeCompare(b.id, undefined, { numeric: true }); });
-  return '<label>' + TYPE_META[t].icon + ' ' + (t === 'AED' ? 'AED' : 'Oxygen tank') + ' inside this bag</label><select id="e-link-' + (t === 'AED' ? 'aed' : 'o2') + '" data-cur="' + esc(cur ? cur.id : '') + '"><option value="">— None —</option>' +
-    list.map(function (x) { var other = x.inBag && x.inBag !== bag.id ? getItem(x.inBag) : null;
-      return '<option value="' + esc(x.id) + '"' + (cur && cur.id === x.id ? ' selected' : '') + '>' + esc(x.name) + ' (' + esc(x.id) + ')' + (other ? ' — now in ' + esc(other.name) : '') + '</option>'; }).join('') + '</select>';
-}
-function saveBagLinks(bagId) {
-  var ups = [];
-  ['aed', 'o2'].forEach(function (k) {
-    var el = $('e-link-' + k); if (!el) return;
-    var cur = el.dataset.cur, nw = el.value;
-    if (cur === nw) return;
-    if (cur) ups.push({ action: 'updateItem', id: cur, inBag: '' });
-    if (nw) ups.push({ action: 'updateItem', id: nw, inBag: bagId });
-  });
-  return ups.reduce(function (p, u) { return p.then(function () { return apiPost(u); }); }, Promise.resolve());
-}
 function typeFieldsFor(type, i) {
   i = i || {};
   var h = '';
   if (type === 'First Responder Bag') h = '<label>Bag kind (color / purpose)</label><select id="e-kind"><option value="">— Not set —</option>' +
     kinds().map(function (k) { return '<option value="' + esc(k.name) + '"' + (k.name === i.bagKind ? ' selected' : '') + '>' + esc(k.name) + (k.color ? ' (' + esc(k.color) + ')' : '') + '</option>'; }).join('') + '</select>' +
-    (isAdmin() && !kinds().length ? '<div class="hint">Add bag kinds in Admin → FR bag kinds.</div>' : '') +
-    linkSel('AED', i) + linkSel('Oxygen Tank', i) + '<div class="hint">Linked items sign out / in together with this bag.</div>';
-  var bagSel = (type === 'AED' || type === 'Oxygen Tank') ? '<label>Stored inside an FR bag?</label><select id="e-inbag"><option value="">— No, stored on its own —</option>' +
-    S.items.filter(function (x) { return x.type === 'First Responder Bag' && x.active; }).sort(function (a, b) { return a.id.localeCompare(b.id, undefined, { numeric: true }); }).map(function (x) {
-      return '<option value="' + esc(x.id) + '"' + (x.id === i.inBag ? ' selected' : '') + '>' + esc(x.name) + (x.bagKind ? ' — ' + esc(x.bagKind) : '') + '</option>'; }).join('') + '</select>' +
-    '<div class="hint">If set, it signs out / in together with that bag.</div>' : '';
-  if (type === 'AED') h = bagSel + '<label>Serial #</label><input id="e-serial" value="' + esc(i.serial || '') + '">' +
+    (isAdmin() && !kinds().length ? '<div class="hint">Add bag kinds in Admin → FR bag kinds.</div>' : '');
+  if (type === 'AED') h = '<label>Serial #</label><input id="e-serial" value="' + esc(i.serial || '') + '">' +
     '<div class="row"><div><label>Adult pads exp.</label><input id="e-pads" type="date" value="' + esc(i.padsExp || '') + '"></div><div><label>Peds pads exp.</label><input id="e-peds" type="date" value="' + esc(i.pedsPadsExp || '') + '"></div></div>' +
     '<label>Battery exp.</label><input id="e-batt" type="date" value="' + esc(i.batteryExp || '') + '">';
-  if (type === 'Oxygen Tank') h = bagSel;
   $('e-typefields').innerHTML = h;
 }
 function saveItem(id) {
@@ -802,12 +765,9 @@ function saveItem(id) {
   if (id) { b.id = id; b.condition = $('e-cond').value; } else if ($('e-id').value.trim()) b.id = $('e-id').value.trim().toUpperCase();
   if (!b.name) { toast('Name required'); return; }
   if ($('e-kind')) b.bagKind = $('e-kind').value;
-  if ($('e-inbag')) b.inBag = $('e-inbag').value;
   if (type === 'AED') { b.serial = $('e-serial').value.trim(); b.padsExp = $('e-pads').value; b.pedsPadsExp = $('e-peds').value; b.batteryExp = $('e-batt').value; }
   busy(true);
   apiPost(b).then(function (d) {
-    return type === 'First Responder Bag' ? saveBagLinks(id || d.id).then(function () { return d; }) : d;
-  }).then(function (d) {
     toast(id ? '✓ Saved' : '✓ Added ' + d.id);
     return refresh().then(function () { if (id) openItem(id); else { stickerPicker([d.id]); } });
   }).catch(function (e) { busy(false); toast('⚠ ' + e.message, 4000); });
