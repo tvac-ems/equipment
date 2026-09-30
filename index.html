@@ -401,7 +401,8 @@ function itemHtml(i, log) {
     '<div style="flex:1"><h3>' + esc(i.name) + '</h3><div class="hint" style="margin:0">' + esc(i.type) + '</div></div>' +
     '<button class="btn ghost sm" onclick="closeModal()">✕</button></div>' + inactive + banner + flags +
     (i.active ? '<div class="row" style="margin:12px 0">' +
-      (out ? '<button class="btn green" onclick="actionForm(\'' + esc(i.id) + '\',\'IN\')">✓ Sign IN</button>'
+      (out ? (canSignIn(i) ? '<button class="btn green" onclick="actionForm(\'' + esc(i.id) + '\',\'IN\')">✓ Sign IN</button>'
+             : '<button class="btn ghost" disabled style="opacity:1;color:var(--text2);font-size:13px">🔒 Only ' + esc(holderName(i)) + ' or an admin can sign in</button>')
            : i.status === 'Out of Service' ? '<button class="btn green" onclick="statusForm(\'' + esc(i.id) + '\',\'Available\')">✓ Back in service</button>'
            : i.condition === 'Needs Attention' ? '<button class="btn ghost" disabled style="opacity:1;color:var(--warn);font-size:14px">🔒 Inspect before sign-out</button>'
            : '<button class="btn red" onclick="actionForm(\'' + esc(i.id) + '\',\'OUT\')">↗ Sign OUT</button>') +
@@ -421,13 +422,29 @@ function logRow(l) {
   return '<div class="log" style="border-color:' + col + '"><b style="color:' + col + '">' + esc(l.action) + '</b> ' +
     (l.location ? '· ' + esc(l.location) + ' ' : '') + (l.call ? '· Call ' + esc(l.call) + ' ' : '') +
     (l.condition && l.condition !== 'OK' ? '· <span style="color:var(--warn)">' + esc(l.condition) + '</span>' : '') +
-    '<div class="t">' + fmtTs(l.ts) + ' · ' + esc(l.member) + '</div>' +
+    '<div class="t">' + fmtTs(l.ts) + ' · ' + esc(l.member) + '</div>' + (l.by ? '<div class="t" style="color:var(--blue)">🛡 Entered by ' + esc(l.by) + '</div>' : '') +
     (l.details ? '<div class="t">' + esc(l.details) + '</div>' : '') + (l.notes ? '<div class="t">📝 ' + esc(l.notes) + '</div>' : '') + '</div>';
 }
 
 // ════════ CHECK IN / OUT ════════
+function holderId(i) { var m = i.status === 'Assigned' && String(i.location || '').match(/\(#([^)]+)\)\s*$/); return m ? m[1] : ''; }
+function holderName(i) { return String(i.location || '').replace(/\s*\(#[^)]+\)\s*$/, '') || 'the member'; }
+function canSignIn(i) { var h = holderId(i); return !h || h === S.member.id || isAdmin(); }
+function memberOptions(sel) {
+  var el = $('f-for'); if (!el) return;
+  var fill = function (list) {
+    if (!$('f-for')) return;
+    var cur = $('f-for').value || sel;
+    $('f-for').innerHTML = list.slice().sort(function (a, b) { return String(a.name).localeCompare(b.name); }).map(function (m) {
+      return '<option value="' + esc(m.id) + '"' + (m.id === cur ? ' selected' : '') + '>' + esc(m.name) + ' (#' + esc(m.id) + ')' + (m.id === S.member.id ? ' — me' : '') + '</option>';
+    }).join('');
+  };
+  if (S.memberList) return fill(S.memberList);
+  apiGet({ action: 'getMembers', pin: S.pin }).then(function (d) { S.memberList = d.members.map(function (m) { return { id: String(m.id), name: m.name }; }); fill(S.memberList); }).catch(function () {});
+}
 function actionForm(id, status) {
   var i = getItem(id), out = status === 'OUT';
+  var defFor = (!out && holderId(i)) || S.member.id, defName = (!out && holderId(i)) ? i.location : S.member.name + ' (#' + S.member.id + ') — me';
   var dl = '<datalist id="locs">' + locations().map(function (l) { return '<option value="' + esc(l) + '">'; }).join('') + '</datalist>';
   var extra = '';
   if (out) extra = '';
@@ -435,12 +452,15 @@ function actionForm(id, status) {
   else if (i.type === 'AED') extra = '<div class="checks"><label class="ck"><input type="checkbox" id="f-padsused"> Pads were used (replace)</label></div>';
 
   showModal('<h3>' + (out ? '↗ Sign OUT' : '✓ Sign IN') + ' — ' + esc(i.name) + '</h3><div class="hint">' + esc(i.id) + '</div>' +
-    '<div class="o2calc" style="margin-top:10px">👤 ' + (out ? 'Signing out to ' : 'Returned by ') + esc(S.member.name) + ' (#' + esc(S.member.id) + ')</div>' +
+    (isAdmin() ? '<label>' + (out ? 'Sign out to' : 'Returned by') + '</label><select id="f-for"><option value="' + esc(defFor) + '">' + esc(defName) + '</option></select>' +
+      '<div class="hint" style="margin-top:4px">Admin: choose the member who ' + (out ? 'is taking' : 'used') + ' it. History shows them, entered by you.</div>'
+      : '<div class="o2calc" style="margin-top:10px">👤 ' + (out ? 'Signing out to ' : 'Returned by ') + esc(S.member.name) + ' (#' + esc(S.member.id) + ')</div>') +
     extra +
     (!out ? '<label>Condition</label><select id="f-cond">' + CONDITIONS.map(function (c) { return '<option' + (c === i.condition ? ' selected' : '') + '>' + c + '</option>'; }).join('') + '</select>' : '') +
     (out ? '<input id="f-notes" type="hidden" value="">' : '<label>Notes (optional)</label><textarea id="f-notes"></textarea>') +
     '<div class="row" style="margin-top:14px"><button class="btn ghost" onclick="openItem(\'' + esc(id) + '\')">Back</button><button class="btn ' + (out ? 'red' : 'green') + '" id="f-go" onclick="submitAction(\'' + esc(id) + '\',\'' + status + '\')">' + (out ? 'Sign OUT' : 'Sign IN') + '</button></div>');
   if ($('f-psi')) o2Hint(i.o2Size || '');
+  if (isAdmin()) memberOptions(defFor);
 }
 function o2Hint(size) {
   var el = $('o2h'); if (!el) return;
@@ -452,6 +472,8 @@ function o2Hint(size) {
 function submitAction(id, status) {
   var i = getItem(id);
   var b = { action: 'checkInOut', id: id, status: status, notes: $('f-notes').value.trim() };
+  var fe = $('f-for'), who = { id: S.member.id, name: S.member.name };
+  if (fe && fe.value) { b.forMember = fe.value; var t = fe.options[fe.selectedIndex].text.replace(/\s*\(#[^)]+\).*$/, ''); who = { id: fe.value, name: t }; }
   if ($('f-call')) b.call = $('f-call').value.trim();
   if ($('f-psi') && $('f-psi').value !== '') b.psi = Number($('f-psi').value);
   if ($('f-seal') && $('f-seal').value.trim()) b.seal = $('f-seal').value.trim();
@@ -462,8 +484,8 @@ function submitAction(id, status) {
   // optimistic: update the screen right away, save in the background
   var before = JSON.parse(JSON.stringify(i)), out = status === 'OUT', cond = b.condition || i.condition || 'OK';
   i.status = out ? 'Assigned' : (cond === 'Out of Service' ? 'Out of Service' : 'Available');
-  i.location = out ? S.member.name + ' (#' + S.member.id + ')' : (i.homeLocation || HOME_LOCATION);
-  i.lastMember = S.member.id; i.lastUpdated = new Date().toISOString(); i.condition = cond;
+  i.location = out ? who.name + ' (#' + who.id + ')' : (i.homeLocation || HOME_LOCATION);
+  i.lastMember = who.id; i.lastUpdated = new Date().toISOString(); i.condition = cond;
   if (!out) i.statusNote = cond !== 'OK' ? (b.notes || cond) : '';
   quickFlags(i);
   closeModal(); toast((out ? '↗ Signed out: ' : '✓ Signed in: ') + i.name); render();
