@@ -90,6 +90,12 @@ textarea{min-height:70px;resize:vertical}
 .sheet{background:#fff;width:100%;max-width:640px;max-height:92vh;overflow-y:auto;border-radius:18px 18px 0 0;padding:16px 16px calc(16px + env(safe-area-inset-bottom))}
 .sheet h3{margin:0 0 6px;font-size:18px}
 .sheet.tall{height:92vh}
+details.sec>summary{list-style:none;display:flex;align-items:center;gap:8px;cursor:pointer}
+details.sec>summary::-webkit-details-marker{display:none}
+details.sec>summary h2{margin:0;flex:1}
+details.sec>summary:after{content:'›';font-size:22px;color:var(--text2);transition:transform .15s}
+details.sec[open]>summary:after{transform:rotate(90deg)}
+details.sec[open]>summary{margin-bottom:10px}
 .toast{position:fixed;left:50%;bottom:90px;transform:translateX(-50%);background:#111;color:#fff;padding:12px 18px;border-radius:12px;font-weight:600;z-index:200;max-width:90vw;text-align:center}
 #login{min-height:100vh;display:flex;align-items:center;justify-content:center;padding:20px;background:var(--navy)}
 #login .card{width:100%;max-width:360px;text-align:center;padding:26px 20px}
@@ -447,7 +453,6 @@ function itemHtml(i, log) {
       (i.status === 'Not Available' ? '<button class="btn ghost sm" style="width:100%" onclick="statusForm(\'' + esc(i.id) + '\',\'Available\')">✅ Found — Available</button>' : '') +
       '</div>' : '') +
     '<div class="card" style="box-shadow:none;border:1px solid var(--border)"><div class="kv">' + kv.map(function (p) { return '<div>' + p[0] + '</div><div>' + p[1] + '</div>'; }).join('') + '</div></div>' +
-    (isAdmin() ? '<div class="row" style="margin-bottom:12px"><button class="btn ghost" onclick="editItemForm(\'' + esc(i.id) + '\')">✏️ Edit</button><button class="btn ghost" onclick="stickerPicker([\'' + esc(i.id) + '\'])">🖨 QR Sticker</button></div>' : '') +
     '<h2 style="font-size:15px;margin:6px 0 8px">History</h2>' + hist;
 }
 function logRow(l) {
@@ -647,12 +652,12 @@ function updateAlertCount() {
 }
 function kindsCard() {
   var ks = kinds();
-  return '<div class="card"><h2>🎒 FR bag kinds</h2><div class="hint" style="margin-bottom:8px">Bag colors and what goes out with them (e.g. Blue = + AED, O2 tank). Also editable in the "Bag Kinds" sheet tab.</div>' +
+  return '<div class="hint" style="margin-bottom:8px">Bag colors and what goes out with them (e.g. Blue = + AED, O2 tank). Also editable in the "Bag Kinds" sheet tab.</div>' +
     (ks.length ? ks.map(function (k, n) {
       var cnt = S.items.filter(function (i) { return i.bagKind === k.name; }).length;
       return '<div class="item" onclick="kindForm(' + n + ')"><div class="ic">' + bagSvg(kindHex(k)) + '</div><div class="mid"><div class="nm">' + esc(k.name) + '</div><div class="sub">' + esc(k.color || 'No color') + ' · ' + cnt + ' bag' + (cnt === 1 ? '' : 's') + (k.also && k.also.length ? ' · + ' + esc(k.also.join(', ')) : '') + '</div></div><span class="hint">Edit ›</span></div>';
     }).join('') : '<div class="hint">No kinds yet.</div>') +
-    '<button class="btn ghost" style="margin-top:10px" onclick="kindForm(-1)">Add bag kind</button></div>';
+    '<button class="btn ghost" style="margin-top:10px" onclick="kindForm(-1)">Add bag kind</button>';
 }
 function kindForm(n) {
   var k = n >= 0 ? kinds()[n] : { name: '', color: 'Blue', checklist: [], also: [] }, known = KIND_COLORS[k.color] !== undefined;
@@ -708,25 +713,36 @@ function renderActivity() {
   }).catch(function (e) { $('act').innerHTML = '<div class="hint">⚠ ' + esc(e.message) + '</div>'; });
 }
 
-function activeCard(items) {
-  var off = items.filter(function (i) { return !i.active; }).length;
-  var rows = items.slice().sort(function (a, b) { return (a.active - b.active) || String(a.id).localeCompare(String(b.id), undefined, { numeric: true }); }).map(function (i) {
+function sect(key, title, meta, body) {
+  S.open = S.open || {};
+  return '<div class="card"><details class="sec"' + (S.open[key] ? ' open' : '') + ' ontoggle="S.open[\'' + key + '\']=this.open"><summary><h2>' + title + '</h2>' + (meta ? '<span class="hint">' + meta + '</span>' : '') + '</summary>' + body + '</details></div>';
+}
+function searchBox(cls) { return '<input placeholder="Search name or ID" style="margin-bottom:6px" oninput="var q=this.value.toLowerCase();document.querySelectorAll(\'.' + cls + '\').forEach(function(r){r.style.display=r.dataset.q.indexOf(q)<0?\'none\':\'flex\'})">'; }
+function byId(a, b) { return String(a.id).localeCompare(String(b.id), undefined, { numeric: true }); }
+function activeBody(items) {
+  var rows = items.slice().sort(function (a, b) { return (a.active - b.active) || byId(a, b); }).map(function (i) {
     return '<label class="act-row" data-q="' + esc((i.id + ' ' + i.name).toLowerCase()) + '" style="display:flex;align-items:center;gap:8px;padding:6px 2px;border-bottom:1px solid var(--border)"><input type="checkbox" style="width:20px;height:20px;margin:0;flex:none"' + (i.active ? ' checked' : '') + ' onchange="toggleActive(\'' + esc(i.id) + '\',this.checked)"><span>' + itemIcon(i) + '</span><span style="flex:1;min-width:0"><b>' + esc(i.name) + '</b> <span class="hint">' + esc(i.id) + '</span></span>' + (i.active ? '' : '<span class="badge b-warn">Inactive</span>') + '</label>';
   }).join('');
-  return '<div class="card"><details' + (S.actOpen ? ' open' : '') + ' ontoggle="S.actOpen=this.open"><summary style="cursor:pointer"><h2 style="display:inline">✅ Active stickers</h2> <span class="hint">' + (items.length - off) + ' active' + (off ? ' · ' + off + ' inactive' : '') + '</span></summary>' +
-    '<div class="hint" style="margin:6px 0">Uncheck to hide an item from the dashboard (its sticker shows "not in use"). Same as the Active column in the sheet.</div>' +
-    '<input placeholder="Search name or ID" oninput="var q=this.value.toLowerCase();document.querySelectorAll(\'.act-row\').forEach(function(r){r.style.display=r.dataset.q.indexOf(q)<0?\'none\':\'flex\'})">' + rows + '</details></div>';
+  return '<div class="hint" style="margin-bottom:6px">Uncheck to hide an item from the dashboard (its sticker shows "not in use"). Same as the Active column in the sheet.</div>' + searchBox('act-row') + rows;
+}
+function editBody(items) {
+  var rows = items.slice().sort(byId).map(function (i) {
+    return '<div class="edit-row" data-q="' + esc((i.id + ' ' + i.name).toLowerCase()) + '" onclick="editItemForm(\'' + esc(i.id) + '\')" style="display:flex;align-items:center;gap:8px;padding:9px 2px;border-bottom:1px solid var(--border);cursor:pointer"><span>' + itemIcon(i) + '</span><span style="flex:1;min-width:0"><b>' + esc(i.name) + '</b> <span class="hint">' + esc(i.id) + '</span></span><span class="hint">Edit ›</span></div>';
+  }).join('');
+  return '<div class="hint" style="margin-bottom:6px">Tap an item to change its name, bag kind, AED dates or notes, or print its sticker.</div>' + searchBox('edit-row') + rows;
 }
 // ════════ ADMIN ════════
 function renderAdmin() {
   if (!isAdmin()) { go('home'); return; }
+  var offCount = S.items.filter(function (i) { return !i.active; }).length;
   $('view').innerHTML =
-    '<div class="card"><h2>➕ Equipment</h2><div class="row"><button class="btn" onclick="editItemForm()">Add item</button><button class="btn ghost" onclick="stickerPicker()">🖨 QR stickers</button></div></div>' +
-    activeCard(S.items) +
-    kindsCard() +
-    '<div class="card"><h2>👥 Members</h2><div id="mem"><div class="spinner"></div></div><button class="btn ghost" style="margin-top:10px" onclick="memberForm()">Add member</button></div>' +
-    notifCard() +
-    '<div class="card"><h2>Account</h2><div class="hint" style="margin-bottom:10px">Backend: ' + esc(API_URL.slice(0, 60)) + '…</div><button class="btn ghost" onclick="logout()">Log out</button></div>';
+    sect('add', '➕ Add item & stickers', '', '<div class="row"><button class="btn" onclick="editItemForm()">Add item</button><button class="btn ghost" onclick="stickerPicker()">🖨 QR stickers</button></div>') +
+    sect('edit', '✏️ Edit items', S.items.length + ' items', editBody(S.items)) +
+    sect('active', '✅ Active stickers', (S.items.length - offCount) + ' active' + (offCount ? ' · ' + offCount + ' inactive' : ''), activeBody(S.items)) +
+    sect('kinds', '🎒 FR bag kinds', kinds().length + ' kinds', kindsCard()) +
+    sect('mem', '👥 Members', '', '<div id="mem"><div class="spinner"></div></div><button class="btn ghost" style="margin-top:10px" onclick="memberForm()">Add member</button>') +
+    sect('notif', '🔔 App notifications', notifOn() ? 'On' : 'Off', notifCard().replace(/^<div class="card"><h2>.*?<\/h2>/, '').replace(/<\/div>$/, '')) +
+    sect('acct', '🔑 Account', '', '<div class="hint" style="margin-bottom:10px">Backend: ' + esc(API_URL.slice(0, 60)) + '…</div><button class="btn ghost" onclick="logout()">Log out</button>');
   loadMembers();
 }
 function loadMembers() {
@@ -768,7 +784,8 @@ function editItemForm(id) {
     '<input id="e-home" type="hidden" value="' + esc(i.homeLocation || HOME_LOCATION) + '">' +
     '<div id="e-typefields"></div>' +
     '<label>Permanent notes (stay until edited)</label><textarea id="e-notes">' + esc(i.notes) + '</textarea>' +
-    '<div class="row" style="margin-top:14px"><button class="btn ghost" onclick="' + (id ? 'openItem(\'' + esc(id) + '\')' : 'closeModal()') + '">Cancel</button><button class="btn" id="f-go" onclick="saveItem(' + (id ? '\'' + esc(id) + '\'' : '') + ')">' + (id ? 'Save' : 'Add + make QR') + '</button></div>');
+    '<div class="row" style="margin-top:14px"><button class="btn ghost" onclick="closeModal()">Cancel</button><button class="btn" id="f-go" onclick="saveItem(' + (id ? '\'' + esc(id) + '\'' : '') + ')">' + (id ? 'Save' : 'Add + make QR') + '</button></div>' +
+    (id ? '<button class="btn ghost" style="margin-top:10px" onclick="stickerPicker([\'' + esc(id) + '\'])">🖨 Print this QR sticker</button>' : ''));
   typeFieldsFor(i.type, i);
 }
 function typeFieldsFor(type, i) {
@@ -792,7 +809,7 @@ function saveItem(id) {
   busy(true);
   apiPost(b).then(function (d) {
     toast(id ? '✓ Saved' : '✓ Added ' + d.id);
-    return refresh().then(function () { if (id) openItem(id); else { stickerPicker([d.id]); } });
+    return refresh().then(function () { if (id) closeModal(); else { stickerPicker([d.id]); } });
   }).catch(function (e) { busy(false); toast('⚠ ' + e.message, 4000); });
 }
 function toggleActive(id, active) {
