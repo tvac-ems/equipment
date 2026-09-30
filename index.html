@@ -761,12 +761,31 @@ function editItemForm(id) {
     (id ? '<button class="btn ghost" style="margin-top:10px;color:' + (i.active ? 'var(--bad)' : 'var(--ok)') + '" onclick="toggleActive(\'' + esc(id) + '\',' + !i.active + ')">' + (i.active ? '⏸ Deactivate item' : '▶ Activate item') + '</button>' : ''));
   typeFieldsFor(i.type, i);
 }
+function linkSel(t, bag) {
+  var cur = bag.id ? bagContents(bag).filter(function (x) { return x.type === t; })[0] : null;
+  var list = S.items.filter(function (x) { return x.type === t && x.active; }).sort(function (a, b) { return a.id.localeCompare(b.id, undefined, { numeric: true }); });
+  return '<label>' + TYPE_META[t].icon + ' ' + (t === 'AED' ? 'AED' : 'Oxygen tank') + ' inside this bag</label><select id="e-link-' + (t === 'AED' ? 'aed' : 'o2') + '" data-cur="' + esc(cur ? cur.id : '') + '"><option value="">— None —</option>' +
+    list.map(function (x) { var other = x.inBag && x.inBag !== bag.id ? getItem(x.inBag) : null;
+      return '<option value="' + esc(x.id) + '"' + (cur && cur.id === x.id ? ' selected' : '') + '>' + esc(x.name) + ' (' + esc(x.id) + ')' + (other ? ' — now in ' + esc(other.name) : '') + '</option>'; }).join('') + '</select>';
+}
+function saveBagLinks(bagId) {
+  var ups = [];
+  ['aed', 'o2'].forEach(function (k) {
+    var el = $('e-link-' + k); if (!el) return;
+    var cur = el.dataset.cur, nw = el.value;
+    if (cur === nw) return;
+    if (cur) ups.push({ action: 'updateItem', id: cur, inBag: '' });
+    if (nw) ups.push({ action: 'updateItem', id: nw, inBag: bagId });
+  });
+  return ups.reduce(function (p, u) { return p.then(function () { return apiPost(u); }); }, Promise.resolve());
+}
 function typeFieldsFor(type, i) {
   i = i || {};
   var h = '';
   if (type === 'First Responder Bag') h = '<label>Bag kind (color / purpose)</label><select id="e-kind"><option value="">— Not set —</option>' +
     kinds().map(function (k) { return '<option value="' + esc(k.name) + '"' + (k.name === i.bagKind ? ' selected' : '') + '>' + esc(k.name) + (k.color ? ' (' + esc(k.color) + ')' : '') + '</option>'; }).join('') + '</select>' +
-    (isAdmin() && !kinds().length ? '<div class="hint">Add bag kinds in Admin → FR bag kinds.</div>' : '');
+    (isAdmin() && !kinds().length ? '<div class="hint">Add bag kinds in Admin → FR bag kinds.</div>' : '') +
+    linkSel('AED', i) + linkSel('Oxygen Tank', i) + '<div class="hint">Linked items sign out / in together with this bag.</div>';
   var bagSel = (type === 'AED' || type === 'Oxygen Tank') ? '<label>Stored inside an FR bag?</label><select id="e-inbag"><option value="">— No, stored on its own —</option>' +
     S.items.filter(function (x) { return x.type === 'First Responder Bag' && x.active; }).sort(function (a, b) { return a.id.localeCompare(b.id, undefined, { numeric: true }); }).map(function (x) {
       return '<option value="' + esc(x.id) + '"' + (x.id === i.inBag ? ' selected' : '') + '>' + esc(x.name) + (x.bagKind ? ' — ' + esc(x.bagKind) : '') + '</option>'; }).join('') + '</select>' +
@@ -787,6 +806,8 @@ function saveItem(id) {
   if (type === 'AED') { b.serial = $('e-serial').value.trim(); b.padsExp = $('e-pads').value; b.pedsPadsExp = $('e-peds').value; b.batteryExp = $('e-batt').value; }
   busy(true);
   apiPost(b).then(function (d) {
+    return type === 'First Responder Bag' ? saveBagLinks(id || d.id).then(function () { return d; }) : d;
+  }).then(function (d) {
     toast(id ? '✓ Saved' : '✓ Added ' + d.id);
     return refresh().then(function () { if (id) openItem(id); else { stickerPicker([d.id]); } });
   }).catch(function (e) { busy(false); toast('⚠ ' + e.message, 4000); });
