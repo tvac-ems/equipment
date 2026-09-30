@@ -437,7 +437,6 @@ function itemHtml(i, log) {
       (i.status === 'Not Available' ? '<button class="btn ghost sm" style="width:100%" onclick="statusForm(\'' + esc(i.id) + '\',\'Available\')">✅ Found — Available</button>' : '') +
       '</div>' : '') +
     '<div class="card" style="box-shadow:none;border:1px solid var(--border)"><div class="kv">' + kv.map(function (p) { return '<div>' + p[0] + '</div><div>' + p[1] + '</div>'; }).join('') + '</div></div>' +
-    (isAdmin() ? '<button class="btn ' + (i.active ? 'ghost' : 'green') + '" style="margin-bottom:10px' + (i.active ? ';color:var(--text2)' : '') + '" onclick="toggleActive(\'' + esc(i.id) + '\',' + !i.active + ')">' + (i.active ? '⏸ Deactivate (hide from dashboard)' : '▶ Activate') + '</button>' : '') +
     (isAdmin() ? '<div class="row" style="margin-bottom:12px"><button class="btn ghost" onclick="editItemForm(\'' + esc(i.id) + '\')">✏️ Edit</button><button class="btn ghost" onclick="stickerPicker([\'' + esc(i.id) + '\'])">🖨 QR Sticker</button></div>' : '') +
     '<h2 style="font-size:15px;margin:6px 0 8px">History</h2>' + hist;
 }
@@ -699,13 +698,21 @@ function renderActivity() {
   }).catch(function (e) { $('act').innerHTML = '<div class="hint">⚠ ' + esc(e.message) + '</div>'; });
 }
 
+function activeCard(items) {
+  var off = items.filter(function (i) { return !i.active; }).length;
+  var rows = items.slice().sort(function (a, b) { return (a.active - b.active) || String(a.id).localeCompare(String(b.id), undefined, { numeric: true }); }).map(function (i) {
+    return '<label class="act-row" data-q="' + esc((i.id + ' ' + i.name).toLowerCase()) + '" style="display:flex;align-items:center;gap:8px;padding:6px 2px;border-bottom:1px solid var(--border)"><input type="checkbox" style="width:20px;height:20px;margin:0;flex:none"' + (i.active ? ' checked' : '') + ' onchange="toggleActive(\'' + esc(i.id) + '\',this.checked)"><span>' + itemIcon(i) + '</span><span style="flex:1;min-width:0"><b>' + esc(i.name) + '</b> <span class="hint">' + esc(i.id) + '</span></span>' + (i.active ? '' : '<span class="badge b-warn">Inactive</span>') + '</label>';
+  }).join('');
+  return '<div class="card"><details' + (S.actOpen ? ' open' : '') + ' ontoggle="S.actOpen=this.open"><summary style="cursor:pointer"><h2 style="display:inline">✅ Active stickers</h2> <span class="hint">' + (items.length - off) + ' active' + (off ? ' · ' + off + ' inactive' : '') + '</span></summary>' +
+    '<div class="hint" style="margin:6px 0">Uncheck to hide an item from the dashboard (its sticker shows "not in use"). Same as the Active column in the sheet.</div>' +
+    '<input placeholder="Search name or ID" oninput="var q=this.value.toLowerCase();document.querySelectorAll(\'.act-row\').forEach(function(r){r.style.display=r.dataset.q.indexOf(q)<0?\'none\':\'flex\'})">' + rows + '</details></div>';
+}
 // ════════ ADMIN ════════
 function renderAdmin() {
   if (!isAdmin()) { go('home'); return; }
-  var retired = S.items.filter(function (i) { return !i.active; });
   $('view').innerHTML =
     '<div class="card"><h2>➕ Equipment</h2><div class="row"><button class="btn" onclick="editItemForm()">Add item</button><button class="btn ghost" onclick="stickerPicker()">🖨 QR stickers</button></div></div>' +
-    (retired.length ? '<div class="card"><h2>⏸ Inactive items (' + retired.length + ')</h2><div class="hint" style="margin-bottom:6px">Hidden from the dashboard. Tap one to activate it again.</div>' + retired.map(itemRow).join('') + '</div>' : '') +
+    activeCard(S.items) +
     kindsCard() +
     '<div class="card"><h2>👥 Members</h2><div id="mem"><div class="spinner"></div></div><button class="btn ghost" style="margin-top:10px" onclick="memberForm()">Add member</button></div>' +
     notifCard() +
@@ -751,8 +758,7 @@ function editItemForm(id) {
     '<input id="e-home" type="hidden" value="' + esc(i.homeLocation || HOME_LOCATION) + '">' +
     '<div id="e-typefields"></div>' +
     '<label>Permanent notes (stay until edited)</label><textarea id="e-notes">' + esc(i.notes) + '</textarea>' +
-    '<div class="row" style="margin-top:14px"><button class="btn ghost" onclick="' + (id ? 'openItem(\'' + esc(id) + '\')' : 'closeModal()') + '">Cancel</button><button class="btn" id="f-go" onclick="saveItem(' + (id ? '\'' + esc(id) + '\'' : '') + ')">' + (id ? 'Save' : 'Add + make QR') + '</button></div>' +
-    (id ? '<button class="btn ghost" style="margin-top:10px;color:' + (i.active ? 'var(--bad)' : 'var(--ok)') + '" onclick="toggleActive(\'' + esc(id) + '\',' + !i.active + ')">' + (i.active ? '⏸ Deactivate item' : '▶ Activate item') + '</button>' : ''));
+    '<div class="row" style="margin-top:14px"><button class="btn ghost" onclick="' + (id ? 'openItem(\'' + esc(id) + '\')' : 'closeModal()') + '">Cancel</button><button class="btn" id="f-go" onclick="saveItem(' + (id ? '\'' + esc(id) + '\'' : '') + ')">' + (id ? 'Save' : 'Add + make QR') + '</button></div>');
   typeFieldsFor(i.type, i);
 }
 function typeFieldsFor(type, i) {
