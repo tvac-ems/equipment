@@ -70,7 +70,7 @@ textarea{min-height:70px;resize:vertical}
 .item .ic{font-size:22px;width:30px;text-align:center}
 .item .mid{flex:1;min-width:0}.item .nm{font-weight:700}.item .sub{font-size:12px;color:var(--text2);overflow-wrap:anywhere}
 .badge{display:inline-block;font-size:12px;font-weight:700;padding:3px 9px;border-radius:12px;white-space:nowrap}
-.b-in{background:var(--okbg);color:var(--ok)}.b-out{background:var(--badbg);color:var(--bad)}.b-asg{background:#e6ecfa;color:var(--navy)}.b-na{background:#eceef1;color:#4b5563}
+.b-in{background:var(--okbg);color:var(--ok)}.b-out{background:var(--badbg);color:var(--bad)}.b-asg{background:#e6ecfa;color:var(--navy)}.b-na{background:#eceef1;color:#4b5563}.b-veh{background:#ede9fe;color:#6d28d9}.gl.veh{background:#ede9fe;color:#6d28d9}
 .b-warn{background:var(--warnbg);color:var(--warn)}.b-bad{background:var(--badbg);color:var(--bad)}.b-ok{background:var(--okbg);color:var(--ok)}
 .flag{display:flex;gap:8px;align-items:flex-start;padding:8px 10px;border-radius:10px;margin-bottom:6px;font-size:13px;font-weight:600}
 .flag.warn{background:var(--warnbg);color:var(--warn)}.flag.bad{background:var(--badbg);color:var(--bad)}
@@ -151,7 +151,7 @@ details.sec[open]>summary{margin-bottom:10px}
     <img class="logo" src="logo.png" alt="">
     <h1>TVAC Equipment<small id="who"></small></h1>
     <button onclick="refresh()" id="sync">⟳</button>
-    <button onclick="confirmLogout()" title="Log out" style="font-size:13px">Log out</button>
+    <button onclick="accountMenu()" title="My account" style="font-size:13px">👤 Me</button>
   </header>
   <main id="view"></main>
   <nav class="tabs">
@@ -171,6 +171,7 @@ details.sec[open]>summary{margin-bottom:10px}
 <script>
 // ════════ CONFIG ════════
 // Paste the Apps Script web-app /exec URL here (update when redeploying under the TVAC account).
+var APP_VERSION = '2026-09-30.3'; // bump on every release — open apps reload themselves when this changes
 var API_URL = 'https://script.google.com/macros/s/AKfycbxEZyMAzgTEBhZhQ7bpifXX3P3sojxhjsn69vTFJPMBI4rsmAjxpTInBUMIAe7WB02W/exec';
 // URL encoded into QR stickers (this page). Auto-detected; override if hosting elsewhere.
 // Single home base for all equipment (items return here on Check IN).
@@ -206,14 +207,16 @@ var STATUS_META = {
   'Available':      { cls: 'b-in',  short: 'Available',  icon: '✅' },
   'Assigned':       { cls: 'b-asg', short: 'Signed out', icon: '👤' },
   'Out of Service': { cls: 'b-warn', short: 'Needs attention', icon: '⚠' },
+  'On Vehicle':     { cls: 'b-veh', short: 'On vehicle', icon: '🚑' },
   'Not Available':  { cls: 'b-na',  short: 'Not Avail.', icon: '❓' }
 };
 var STATUSES = Object.keys(STATUS_META);
-function isNA(i) { return i.status !== 'Assigned' && i.status !== 'Not Available' && (i.status === 'Out of Service' || (i.condition && i.condition !== 'OK')); }
+function isNA(i) { return i.status !== 'Assigned' && i.status !== 'Not Available' && i.status !== 'On Vehicle' && (i.status === 'Out of Service' || (i.condition && i.condition !== 'OK')); }
 function effStatus(i) { return isNA(i) ? 'Out of Service' : i.status; }
 function flagText(t) { return String(t).replace(/^(Unavailable|Out of Service)/, 'Needs attention'); }
 function statusBadge(i) { var m = STATUS_META[effStatus(i)] || STATUS_META['Available']; return '<span class="badge ' + m.cls + '">' + m.short + '</span>'; }
-function whereText(i) { return i.status === 'Assigned' ? '👤 ' + (i.location || '—') : i.status === 'Not Available' ? '❓ Not in location' : '📍 ' + (i.location || i.homeLocation || '—'); }
+function vehicles() { return (S.cfg && S.cfg.vehicles) || []; }
+function whereText(i) { return i.status === 'Assigned' ? '👤 ' + (i.location || '—') : i.status === 'On Vehicle' ? '🚑 ' + (i.location || '—') : i.status === 'Not Available' ? '❓ Not in location' : '📍 ' + (i.location || i.homeLocation || '—'); }
 
 // ════════ STATE ════════
 var S = { pin: null, member: null, items: [], cfg: {}, filter: 'All', q: '', tab: 'home', pendingId: null };
@@ -252,7 +255,7 @@ function ago(ts) {
 function fmtTs(ts) { if (!ts) return '—'; var d = new Date(ts); return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' }) + ' ' + d.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' }); }
 function worst(flags) { if (!flags || !flags.length) return null; return flags.some(function (f) { return f.level === 'bad'; }) ? 'bad' : 'warn'; }
 function isAdmin() { return S.member && S.member.role === 'admin'; }
-function getItem(id) { return S.items.find(function (i) { return i.id.toUpperCase() === String(id).toUpperCase(); }); }
+function getItem(id) { var k = String(id).trim().toUpperCase(); return S.items.find(function (i) { return i.id.toUpperCase() === k; }) || S.items.find(function (i) { return i.oldId && i.oldId.toUpperCase() === k; }); }
 function o2Minutes(psi, size, lpm) { var f = O2_FACTORS[size]; if (!f || !psi) return null; return Math.max(0, Math.floor((psi - 200) * f / (lpm || 15))); }
 function locations() {
   var set = {};
@@ -268,6 +271,27 @@ function doLogin() {
     S.pin = p; S.member = d.member; store('tvac_pin', p); store('tvac_member', JSON.stringify(d.member));
     startApp();
   }).catch(function (e) { $('login-err').textContent = '✕ ' + e.message; $('pin').value = ''; $('pin').focus(); });
+}
+function accountMenu() {
+  showModal('<h3>👤 ' + esc(S.member.name) + '</h3><div class="hint" style="margin-bottom:12px">Member #' + esc(S.member.id) + (isAdmin() ? ' · admin' : '') + '</div>' +
+    '<button class="btn ghost" style="margin-bottom:8px" onclick="pinForm()">🔑 Change my PIN</button>' +
+    '<button class="btn red" style="margin-bottom:8px" onclick="confirmLogout()">Log out</button>' +
+    '<button class="btn ghost" onclick="closeModal()">Close</button>');
+}
+function pinForm() {
+  showModal('<h3>🔑 Change my PIN</h3><label>New PIN (4–8 digits)</label><input id="np1" type="password" inputmode="numeric" autocomplete="off">' +
+    '<label>Type it again</label><input id="np2" type="password" inputmode="numeric" autocomplete="off">' +
+    '<div class="hint" style="margin-top:6px">Use the new PIN next time you log in on any phone. Admins can see it if you forget.</div>' +
+    '<div class="row" style="margin-top:14px"><button class="btn ghost" onclick="accountMenu()">Back</button><button class="btn" id="f-go" onclick="savePin()">Save PIN</button></div>');
+  setTimeout(function () { if ($('np1')) $('np1').focus(); }, 50);
+}
+function savePin() {
+  var a = $('np1').value.trim(), b = $('np2').value.trim();
+  if (!/^\d{4,8}$/.test(a)) { toast('PIN must be 4–8 digits'); return; }
+  if (a !== b) { toast('The two PINs don\'t match'); return; }
+  busy(true);
+  apiPost({ action: 'changePin', newPin: a }).then(function () { S.pin = a; store('tvac_pin', a); S.memberList = null; closeModal(); toast('✓ PIN changed'); })
+    .catch(function (e) { busy(false); toast('⚠ ' + e.message, 4000); });
 }
 function confirmLogout() {
   showModal('<h3>Log out?</h3><div class="hint" style="margin-bottom:14px">Logged in as ' + esc(S.member.name) + ' (#' + esc(S.member.id) + '). You\'ll need your PIN to log back in.</div>' +
@@ -285,9 +309,9 @@ function startApp() {
   try { var c = JSON.parse(store('tvac_cache') || 'null'); if (c && c.items) { S.items = c.items; S.cfg = c.cfg || {}; S.loaded = true; } } catch (e) {}
   if (S.tab !== 'home' && S.tab !== 'activity' && S.tab !== 'alerts' && !(S.tab === 'admin' && isAdmin())) S.tab = 'home';
   render();
-  if (S.pendingId && getItem(S.pendingId)) { var pid = S.pendingId; S.pendingId = null; openItem(pid); }
+  if (S.pendingId && getItem(S.pendingId)) { var pid = S.pendingId; S.pendingId = null; S.scanId = pid; openItem(pid); }
   refresh().then(function () {
-    if (S.pendingId) { var id = S.pendingId; S.pendingId = null; openItem(id); }
+    if (S.pendingId) { var id = S.pendingId; S.pendingId = null; S.scanId = id; openItem(id); }
   });
 }
 function quickFlags(i) { // instant local flags until the server's version arrives
@@ -366,14 +390,20 @@ function glanceHtml(active) {
   var who = Object.keys(by).sort().map(function (k) {
     return '<div class="who" onclick="setFilter(\'Assigned\')"><b>👤 ' + esc(k) + '</b>' + by[k].map(function (i) { return '<span>' + itemIcon(i) + ' ' + esc(i.name) + ' — out since ' + fmtTs(i.lastUpdated) + '</span>'; }).join('') + '</div>';
   }).join('');
+  var vby = {};
+  active.filter(function (i) { return i.status === 'On Vehicle'; }).forEach(function (i) { (vby[i.location] = vby[i.location] || []).push(i); });
+  var veh = vehicles().concat(Object.keys(vby).filter(function (k) { return vehicles().indexOf(k) < 0; })).filter(function (k) { return vby[k]; }).map(function (k) {
+    return '<div class="who" onclick="setFilter(\'On Vehicle\')"><b>🚑 ' + esc(k) + ' <span class="hint">(' + vby[k].length + ')</span></b>' + vby[k].map(function (i) { return '<span>' + itemIcon(i) + ' ' + esc(i.name) + ' <span class="hint">#' + esc(i.id) + '</span></span>'; }).join('') + '</div>';
+  }).join('');
   return '<div class="card"><h2 style="margin-bottom:0">At a glance <span class="hint" style="font-weight:500">· ' + active.length + ' items</span></h2>' +
-    '<div class="glance" style="grid-template-columns:repeat(3,1fr)">' + box('Available', 'av', 'Available') + box('Assigned', 'as', 'Signed out') + box('Out of Service', 'warn', '⚠ Needs attention') + '</div>' +
+    '<div class="glance" style="grid-template-columns:repeat(4,1fr)">' + box('Available', 'av', 'Available') + box('Assigned', 'as', 'Signed out') + box('On Vehicle', 'veh', '🚑 On vehicle') + box('Out of Service', 'warn', '⚠ Needs attention') + '</div>' +
     (function () {
       var g = {}; alertGroups().forEach(function (x) { g[x.key] = x.items.length; });
       var ab = function (n, cls, lbl) { return '<div class="gl ' + cls + '" onclick="go(\'alerts\')"><div class="n">' + n + '</div><div class="l">' + lbl + '</div></div>'; };
       return '<div class="glance" style="grid-template-columns:repeat(2,1fr)">' + ab(g.exp || 0, 'os', '🔴 Expired') + ab(g.soon || 0, 'warn', '🟠 Expiring soon') + '</div>';
     })() +
-    (who ? '<div style="margin-top:10px"><div class="hint" style="font-weight:700;margin-bottom:2px">Who has what</div>' + who + '</div>' : '') + '</div>';
+    (who ? '<div style="margin-top:10px"><div class="hint" style="font-weight:700;margin-bottom:2px">Who has what</div>' + who + '</div>' : '') +
+    (veh ? '<div style="margin-top:10px"><div class="hint" style="font-weight:700;margin-bottom:2px">On vehicles</div>' + veh + '</div>' : '') + '</div>';
 }
 function setFilter(f) { S.filter = S.filter === f ? 'All' : f; renderHome(); }
 function renderList() {
@@ -424,15 +454,15 @@ function openItem(id) {
 }
 function histHtml(log) { return log === 'loading' ? '<div class="hint">Loading history…</div>' : log ? (log.length ? log.map(logRow).join('') : '<div class="hint">No history yet</div>') : '<div class="hint">History unavailable right now</div>'; }
 function itemHtml(i, log) {
-  var m = TYPE_META[i.type], out = i.status === 'Assigned';
-  var kv = [['ID', esc(i.id)], ['Status', statusBadge(i)],
-    [out ? 'Assigned to' : 'Location', esc(out ? i.location : i.status === 'Not Available' ? 'Not in location' : (i.location || i.homeLocation || '—'))]].concat(out && i.lastUpdated ? [['Out since', fmtTs(i.lastUpdated) + ' <span class="hint">(' + ago(i.lastUpdated) + ')</span>']] : []).concat([['Home', esc(i.homeLocation || '—')]]);
+  var m = TYPE_META[i.type], out = i.status === 'Assigned', onv = i.status === 'On Vehicle';
+  var kv = [['ID', esc(i.id) + (i.oldId ? ' <span class="hint">(was ' + esc(i.oldId) + ')</span>' : '')], ['Status', statusBadge(i)],
+    [out ? 'Assigned to' : onv ? 'Vehicle' : 'Location', esc(out ? i.location : onv ? '🚑 ' + i.location : i.status === 'Not Available' ? 'Not in location' : (i.location || i.homeLocation || '—'))]].concat((out || onv) && i.lastUpdated ? [[out ? 'Out since' : 'On since', fmtTs(i.lastUpdated) + ' <span class="hint">(' + ago(i.lastUpdated) + ')</span>']] : []).concat([['Home', esc(i.homeLocation || '—')]]);
   if (i.type === 'First Responder Bag') kv.push(['Bag kind', kindTag(i) || '<span class="hint">Not set</span>']);
   if (i.type === 'AED') kv.push(['Serial', esc(i.serial || '—')], ['Adult pads exp', esc(i.padsExp || '—')], ['Peds pads exp', esc(i.pedsPadsExp || '—')], ['Battery exp', esc(i.batteryExp || '—')]);
   kv.push(['Last activity', ago(i.lastUpdated) + (i.lastMember ? ' · #' + esc(i.lastMember) : '')]);
   if (i.notes) kv.push(['Permanent notes', esc(i.notes)]);
 
-  var banner = isNA(i) ? '<div class="oos-banner warn-banner"><div class="big">⚠ NEEDS ATTENTION — AT STATION</div><div class="why">Do not take' + (i.statusNote ? ' — ' + esc(i.statusNote) : '') + '</div></div>'
+  var banner = isNA(i) ? '<div class="oos-banner warn-banner"><div class="big">⚠ NEEDS ATTENTION — ' + (i.location && i.location !== i.homeLocation && vehicles().indexOf(i.location) >= 0 ? 'ON ' + esc(i.location).toUpperCase() : 'AT STATION') + '</div><div class="why">Do not take' + (i.statusNote ? ' — ' + esc(i.statusNote) : '') + '</div></div>'
     : i.status === 'Not Available' ? '<div class="oos-banner na-banner"><div class="big">❓ NOT IN LOCATION</div>' + (i.statusNote ? '<div class="why">' + esc(i.statusNote) + '</div>' : '') + '</div>' : '';
   var flags = i.flags.filter(function (f) { return !/^(Out of Service|Unavailable|Needs Attention|Not Available)/i.test(f.text); })
     .map(function (f) { return '<div class="flag ' + f.level + '">⚠ ' + esc(f.text) + '</div>'; }).join('');
@@ -443,19 +473,22 @@ function itemHtml(i, log) {
     '<div style="flex:1"><h3>' + esc(i.name) + '</h3><div class="hint" style="margin:0">' + esc(i.type) + kindTag(i) + '</div></div>' +
     '<button class="btn ghost sm" onclick="closeModal()">✕</button></div>' + inactive + banner + flags + hist +
     (i.active ? '<div class="row" style="margin:12px 0">' +
-      (out ? (canSignIn(i) ? '<button class="btn green" onclick="actionForm(\'' + esc(i.id) + '\',\'IN\')">✓ Sign IN</button>'
+      (!canAct(i) && !isNA(i) ? '<div class="o2calc" style="width:100%;text-align:center;margin:0">📷 To sign this ' + (out ? 'in' : onv ? 'off the vehicle' : 'out') + ', <b>scan its QR sticker</b> or type its ID (#' + esc(i.id) + ') on the Scan screen.</div>'
+      : out ? (canSignIn(i) ? '<button class="btn green" onclick="actionForm(\'' + esc(i.id) + '\',\'IN\')">✓ Sign IN</button>'
              : '<button class="btn ghost" disabled style="opacity:1;color:var(--text2);font-size:13px">🔒 Only ' + esc(holderName(i)) + ' or an admin can sign in</button>')
-           : isNA(i) ? '<button class="btn green" onclick="statusForm(\'' + esc(i.id) + '\',\'Available\')">✅ Fixed — mark available</button>'
+           : isNA(i) ? (isAdmin() ? '<button class="btn green" onclick="statusForm(\'' + esc(i.id) + '\',\'Available\')">✅ Fixed — mark available</button>' : '<div class="o2calc" style="width:100%;text-align:center;margin:0">⚠ Needs attention — an admin will mark it fixed.</div>')
+           : onv ? '<button class="btn green" onclick="submitVehicle(\'' + esc(i.id) + '\',\'\')">🏠 Take off vehicle</button>'
            : '<button class="btn red" onclick="actionForm(\'' + esc(i.id) + '\',\'OUT\')">↗ Sign OUT</button>') +
       '</div>' +
       '<div class="row" style="margin-bottom:12px">' +
-      (!isNA(i) && i.status !== 'Not Available' ? '<button class="btn ghost sm" style="width:100%" onclick="statusForm(\'' + esc(i.id) + '\',\'Out of Service\')">⚠ Needs attention (empty, broken…)</button>' : '') +
+      ((i.status === 'Available' || onv) && vehicles().length && canAct(i) ? '<button class="btn ghost sm" onclick="vehicleForm(\'' + esc(i.id) + '\')">🚑 ' + (onv ? 'Move vehicle' : 'Put on vehicle') + '</button>' : '') +
+      (!isNA(i) && i.status !== 'Not Available' ? '<button class="btn ghost sm" onclick="statusForm(\'' + esc(i.id) + '\',\'Out of Service\')">⚠ Needs attention</button>' : '') +
       (i.status === 'Not Available' ? '<button class="btn ghost sm" style="width:100%" onclick="statusForm(\'' + esc(i.id) + '\',\'Available\')">✅ Found — Available</button>' : '') +
       '</div>' : '') +
     '<div class="card" style="box-shadow:none;border:1px solid var(--border);margin-top:10px"><div class="kv">' + kv.map(function (p) { return '<div>' + p[0] + '</div><div>' + p[1] + '</div>'; }).join('') + '</div></div>';
 }
 function logRow(l) {
-  var col = { 'SIGNED OUT': 'var(--navy)', OUT: 'var(--navy)', 'SIGNED IN': 'var(--ok)', IN: 'var(--ok)', AVAILABLE: 'var(--ok)', INSPECTED: 'var(--blue)', 'OUT OF SERVICE': 'var(--bad)', 'NOT AVAILABLE': 'var(--text2)' }[l.action] || 'var(--text2)';
+  var col = { 'SIGNED OUT': 'var(--navy)', OUT: 'var(--navy)', 'SIGNED IN': 'var(--ok)', IN: 'var(--ok)', AVAILABLE: 'var(--ok)', INSPECTED: 'var(--blue)', 'OUT OF SERVICE': 'var(--bad)', 'NOT AVAILABLE': 'var(--text2)', 'ON VEHICLE': '#6d28d9', 'MOVED TO VEHICLE': '#6d28d9', 'OFF VEHICLE': 'var(--ok)' }[l.action] || 'var(--text2)';
   return '<div class="log" style="border-color:' + col + '"><b style="color:' + col + '">' + esc(l.action) + '</b> ' +
     (l.location ? '· ' + esc(l.location) + ' ' : '') + (l.call ? '· Call ' + esc(l.call) + ' ' : '') +
     (l.condition && l.condition !== 'OK' ? '· <span style="color:var(--warn)">' + esc(l.condition) + '</span>' : '') +
@@ -466,6 +499,8 @@ function logRow(l) {
 // ════════ CHECK IN / OUT ════════
 function holderId(i) { var m = i.status === 'Assigned' && String(i.location || '').match(/\(#([^)]+)\)\s*$/); return m ? m[1] : ''; }
 function holderName(i) { return String(i.location || '').replace(/\s*\(#[^)]+\)\s*$/, '') || 'the member'; }
+/** Members can only sign in/out (or move to a vehicle) an item they just scanned or typed the ID of. Admins can do it from anywhere. */
+function canAct(i) { var k = String(S.scanId || '').toUpperCase(); return isAdmin() || (!!k && (k === i.id.toUpperCase() || k === String(i.oldId || '').toUpperCase())); }
 function canSignIn(i) { var h = holderId(i); return !h || h === S.member.id || isAdmin(); }
 function memberOptions(sel) {
   var el = $('f-for'); if (!el) return;
@@ -481,6 +516,7 @@ function memberOptions(sel) {
 }
 function actionForm(id, status) {
   var i = getItem(id), out = status === 'OUT';
+  if (!canAct(i)) { toast('Scan the QR sticker (or type the ID) first'); return; }
   var defFor = (!out && holderId(i)) || S.member.id, defName = (!out && holderId(i)) ? i.location : S.member.name + ' (#' + S.member.id + ') — me';
   var dl = '<datalist id="locs">' + locations().map(function (l) { return '<option value="' + esc(l) + '">'; }).join('') + '</datalist>';
   var extra = '';
@@ -534,6 +570,59 @@ function submitAction(id, status) {
   closeModal(); toast((out ? '↗ Signed out: ' : '✓ Signed in: ') + i.name); render();
   apiPost(b).then(function (d) { updateLocal(d.item); saveCache(); if (!$('modal-root').innerHTML) render(); })
     .catch(function (e) { updateLocal(before); render(); toast('⚠ Not saved: ' + e.message, 5000); });
+}
+
+// ════════ VEHICLES ════════
+function vehicleForm(id) {
+  var i = getItem(id); if (!canAct(i)) { toast('Scan the QR sticker (or type the ID) first'); return; }
+  var i2 = i, cur = i.status === 'On Vehicle' ? i.location : '';
+  showModal('<h3>🚑 ' + (cur ? 'Move' : 'Put') + ' ' + esc(i.name) + (cur ? '' : ' on a vehicle') + '</h3><div class="hint">#' + esc(i.id) + (cur ? ' · now on ' + esc(cur) : '') + '</div>' +
+    '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:12px">' + vehicles().filter(function (v) { return v !== cur; }).map(function (v) {
+      return '<button class="btn ghost" onclick="submitVehicle(\'' + esc(id) + '\',vehicles()[' + vehicles().indexOf(v) + '])">🚑 ' + esc(v) + '</button>'; }).join('') + '</div>' +
+    '<div class="hint" style="margin-top:8px">History will show that you (' + esc(S.member.name) + ') put it there.</div>' +
+    '<div class="row" style="margin-top:14px"><button class="btn ghost" onclick="openItem(\'' + esc(id) + '\')">Back</button></div>');
+}
+function submitVehicle(id, v) {
+  var i = getItem(id), before = JSON.parse(JSON.stringify(i));
+  i.status = v ? 'On Vehicle' : 'Available'; i.location = v || i.homeLocation || HOME_LOCATION; i.lastMember = S.member.id; i.lastUpdated = new Date().toISOString();
+  closeModal(); toast(v ? '🚑 ' + i.name + ' → ' + v : '🏠 ' + i.name + ' back at station'); render();
+  apiPost({ action: 'setVehicle', id: id, vehicle: v }).then(function (d) { updateLocal(d.item); saveCache(); if (!$('modal-root').innerHTML) render(); })
+    .catch(function (e) { updateLocal(before); render(); toast('⚠ Not saved: ' + e.message, 5000); });
+}
+function vehiclesBody() {
+  return '<div class="hint" style="margin-bottom:8px">Anyone can put equipment on a vehicle from the item page. Names are also editable in the "Vehicles" sheet tab.</div>' +
+    vehicles().map(function (v, n) {
+      var cnt = S.items.filter(function (i) { return i.status === 'On Vehicle' && i.location === v; }).length;
+      return '<div class="item" onclick="vehForm(' + n + ')"><div class="ic">🚑</div><div class="mid"><div class="nm">' + esc(v) + '</div><div class="sub">' + cnt + ' item' + (cnt === 1 ? '' : 's') + ' on it</div></div><span class="hint">Edit ›</span></div>';
+    }).join('') + '<button class="btn ghost" style="margin-top:10px" onclick="vehForm(-1)">Add vehicle</button>';
+}
+function vehForm(n) {
+  var v = n >= 0 ? vehicles()[n] : '';
+  showModal('<h3>' + (n >= 0 ? 'Rename vehicle' : 'Add vehicle') + '</h3><label>Vehicle name / number</label><input id="v-name" value="' + esc(v) + '" placeholder="e.g. 45-10">' +
+    '<div class="row" style="margin-top:14px"><button class="btn ghost" onclick="closeModal()">Cancel</button><button class="btn" id="f-go" onclick="saveVeh(' + n + ')">Save</button></div>' +
+    (n >= 0 ? '<button class="btn ghost" id="v-del" style="margin-top:10px;color:var(--bad)" onclick="delVeh(' + n + ')">Delete vehicle</button>' : ''));
+}
+function saveVeh(n) {
+  var old = n >= 0 ? vehicles()[n] : '', name = $('v-name').value.trim();
+  if (!name) { toast('Name required'); return; }
+  busy(true);
+  apiPost({ action: 'saveVehicle', old: old, name: name }).then(function (d) { S.cfg.vehicles = d.vehicles; if (old) S.items.forEach(function (i) { if (i.status === 'On Vehicle' && i.location === old) i.location = name; }); saveCache(); closeModal(); toast('✓ Saved'); render(); })
+    .catch(function (e) { busy(false); toast('⚠ ' + e.message, 4000); });
+}
+function delVeh(n) {
+  var el = $('v-del'), v = vehicles()[n];
+  if (!el.dataset.sure) { el.dataset.sure = 1; el.textContent = 'Tap again to delete "' + v + '"'; return; }
+  apiPost({ action: 'deleteVehicle', name: v }).then(function (d) { S.cfg.vehicles = d.vehicles; saveCache(); closeModal(); toast('Deleted'); render(); })
+    .catch(function (e) { toast('⚠ ' + e.message, 4000); });
+}
+
+// ════════ AUTO-UPDATE ════════
+function checkUpdate() {
+  fetch('index.html?v=' + Date.now(), { cache: 'no-store' }).then(function (r) { return r.ok ? r.text() : ''; }).then(function (t) {
+    var m = t.match(/var APP_VERSION = '([^']+)'/);
+    if (!m || m[1] === APP_VERSION) return;
+    if (!$('modal-root').innerHTML) location.reload(); else S.updateReady = true; // don't interrupt someone mid-form
+  }).catch(function () {});
 }
 
 // ════════ STATUS CHANGE ════════
@@ -738,6 +827,7 @@ function renderAdmin() {
     sect('edit', '✏️ Edit items', S.items.length + ' items', editBody(S.items)) +
     sect('active', '✅ Active stickers', (S.items.length - offCount) + ' active' + (offCount ? ' · ' + offCount + ' inactive' : ''), activeBody(S.items)) +
     sect('kinds', '🎒 FR bag kinds', kinds().length + ' kinds', kindsCard()) +
+    sect('veh', '🚑 Vehicles', vehicles().length + ' vehicles', vehiclesBody()) +
     sect('mem', '👥 Members', '', '<div id="mem"><div class="spinner"></div></div><button class="btn ghost" style="margin-top:10px" onclick="memberForm()">Add member</button>') +
     sect('notif', '🔔 App notifications', notifOn() ? 'On' : 'Off', notifCard().replace(/^<div class="card"><h2>.*?<\/h2>/, '').replace(/<\/div>$/, '')) +
     sect('acct', '🔑 Account', '', '<div class="hint" style="margin-bottom:10px">Backend: ' + esc(API_URL.slice(0, 60)) + '…</div><button class="btn ghost" onclick="logout()">Log out</button>');
@@ -747,7 +837,7 @@ function loadMembers() {
   apiGet({ action: 'getMembers', pin: S.pin }).then(function (d) {
     S.members = d.members;
     $('mem').innerHTML = d.members.map(function (m) {
-      return '<div class="item" onclick="memberForm(\'' + esc(m.id) + '\')"><div class="ic">' + (m.role === 'admin' ? '⭐' : '👤') + '</div><div class="mid"><div class="nm">' + esc(m.name) + '</div><div class="sub">#' + esc(m.id) + (m.email ? ' · ' + esc(m.email) : '') + '</div></div><span class="badge b-in">' + esc(m.role) + '</span></div>';
+      return '<div class="item" onclick="memberForm(\'' + esc(m.id) + '\')"><div class="ic">' + (m.role === 'admin' ? '⭐' : '👤') + '</div><div class="mid"><div class="nm">' + esc(m.name) + '</div><div class="sub">#' + esc(m.id) + ' · PIN ' + esc(m.pin) + (m.email ? ' · ' + esc(m.email) : '') + '</div></div><span class="badge b-in">' + esc(m.role) + '</span></div>';
     }).join('');
   }).catch(function (e) { $('mem').innerHTML = '<div class="hint">⚠ ' + esc(e.message) + '</div>'; });
 }
@@ -778,7 +868,7 @@ function editItemForm(id) {
   showModal('<h3>' + (id ? 'Edit ' + esc(i.id) : 'Add equipment') + '</h3>' + dl +
     '<label>Type</label><select id="e-type" onchange="typeFieldsFor(this.value)"' + (id ? ' disabled' : '') + '>' + TYPES.map(function (t) { return '<option' + (t === i.type ? ' selected' : '') + '>' + t + '</option>'; }).join('') + '</select>' +
     '<label>Name / label</label><input id="e-name" value="' + esc(i.name) + '" placeholder="e.g. FR Bag 1, O2 D-Tank 3, AED — Rig 45-10">' +
-    (!id ? '<label>ID (leave blank to auto-number)</label><input id="e-id" placeholder="Auto: FRB-01 / O2-01 / AED-01" style="text-transform:uppercase">' : '') +
+    (!id ? '<label>ID (leave blank to auto-number)</label><input id="e-id" placeholder="Auto: next number (e.g. 1133)" style="text-transform:uppercase">' : '') +
     '<input id="e-home" type="hidden" value="' + esc(i.homeLocation || HOME_LOCATION) + '">' +
     '<div id="e-typefields"></div>' +
     '<label>Permanent notes (stay until edited)</label><textarea id="e-notes">' + esc(i.notes) + '</textarea>' +
@@ -973,7 +1063,7 @@ var _stream = null, _raf = null, _cam = null, _camOff = null; // _cam = kept-ali
 function openScanner() {
   var el = document.createElement('div'); el.id = 'scanner';
   el.innerHTML = '<video playsinline muted></video><div class="frame"></div><div class="bar"><div style="color:#fff;text-align:center;margin-bottom:10px;font-weight:600">Point at an equipment QR sticker</div>' +
-    '<div class="row"><input id="manual-id" placeholder="Or type ID (e.g. AED-01)" style="text-transform:uppercase"><button class="btn sm" onclick="scanned($(\'manual-id\').value)">Go</button></div>' +
+    '<div class="row"><input id="manual-id" placeholder="Or type ID (e.g. 1001)" inputmode="numeric" style="text-transform:uppercase"><button class="btn sm" onclick="scanned($(\'manual-id\').value)">Go</button></div>' +
     '<button class="btn ghost" style="margin-top:10px" onclick="closeScanner()">Cancel</button></div>';
   document.body.appendChild(el);
   var video = el.querySelector('video');
@@ -1012,6 +1102,7 @@ function scanned(text) {
   closeScanner();
   if (navigator.vibrate) navigator.vibrate(60);
   if (!getItem(id)) { toast('Unknown item: ' + id); return; }
+  S.scanId = id.toUpperCase(); // opened by scanning / typing the ID → members may sign it in or out
   openItem(id.toUpperCase());
 }
 
@@ -1021,7 +1112,7 @@ function showModal(html, cls) {
   root.innerHTML = '<div class="modal" onclick="if(event.target===this)closeModal()"><div class="sheet' + (cls ? ' ' + cls : '') + '">' + html + '</div></div>';
   document.body.style.overflow = 'hidden';
 }
-function closeModal() { $('modal-root').innerHTML = ''; document.body.style.overflow = ''; if (location.search.indexOf('id=') >= 0) history.replaceState(null, '', APP_URL); }
+function closeModal() { if (S.updateReady) { location.reload(); return; } S.scanId = null; $('modal-root').innerHTML = ''; document.body.style.overflow = ''; if (location.search.indexOf('id=') >= 0) history.replaceState(null, '', APP_URL); }
 function busy(on) { var b = $('f-go'); if (b) { b.disabled = on; if (on) { b.dataset.t = b.textContent; b.textContent = 'Saving…'; } else if (b.dataset.t) b.textContent = b.dataset.t; } }
 function updateLocal(item) { var idx = S.items.findIndex(function (i) { return i.id === item.id; }); if (idx >= 0) S.items[idx] = item; else S.items.push(item); }
 
@@ -1044,7 +1135,8 @@ function updateLocal(item) { var idx = S.items.findIndex(function (i) { return i
   // pick up changes made in the Google Sheet: every 60s, and whenever the app comes back to the foreground
   setInterval(function () { if (S.pin && (!document.hidden || notifOn())) refresh(); }, 60000); // keeps checking even with an item page open
   if (navigator.serviceWorker) navigator.serviceWorker.addEventListener('message', function (e) { if (e.data && e.data.type === 'open' && e.data.id && S.pin) openItem(e.data.id); });
-  document.addEventListener('visibilitychange', function () { if (!document.hidden && S.pin) refresh(); });
+  document.addEventListener('visibilitychange', function () { if (!document.hidden && S.pin) refresh(); if (!document.hidden) checkUpdate(); });
+  setTimeout(checkUpdate, 5000); setInterval(checkUpdate, 5 * 60000);
 })();
 </script>
 </body>
