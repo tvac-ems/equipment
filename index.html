@@ -101,6 +101,9 @@ textarea{min-height:70px;resize:vertical}
 .spinner{width:28px;height:28px;border:3px solid #ddd;border-top-color:var(--navy);border-radius:50%;animation:sp 0.8s linear infinite;margin:30px auto}
 @keyframes sp{to{transform:rotate(360deg)}}
 .o2calc{background:#eef4fb;color:var(--blue);border-radius:10px;padding:8px 10px;font-size:13px;font-weight:600;margin-top:6px}
+/* FR bag kinds */
+.kind{display:inline-flex;align-items:center;gap:4px;font-size:11px;font-weight:700;color:var(--text2);background:#f1f3f6;border-radius:8px;padding:1px 7px;margin-left:4px;vertical-align:middle;white-space:nowrap}
+.kd{width:10px;height:10px;border-radius:50%;display:inline-block;border:1px solid rgba(0,0,0,.18);flex:none}
 /* print stickers */
 #print-area{display:none}
 @media print{
@@ -172,6 +175,13 @@ var TYPE_META = {
   'Oxygen Tank':         { icon: '🫁', short: 'O2 Tanks', checks: ['Regulator attached & working', 'No leaks', 'O-ring / washer present', 'Cylinder undamaged', 'Stored / secured properly'] },
   'AED':                 { icon: '⚡', short: 'AEDs',    checks: ['Status indicator OK', 'Adult pads present & sealed', 'Peds pads present', 'Razor, scissors, towel', 'Unit & case undamaged'] }
 };
+// FR bag kinds (color / purpose) — managed in Admin, stored in the "Bag Kinds" sheet tab
+var KIND_COLORS = { Blue: '#1e5bd8', Green: '#16a34a', Red: '#dc2626', Orange: '#f97316', Yellow: '#eab308', Purple: '#9333ea', Pink: '#ec4899', Black: '#111827', Gray: '#6b7280', White: '#f3f4f6', Brown: '#92400e' };
+function kinds() { return (S.cfg && S.cfg.bagKinds) || []; }
+function kindOf(i) { if (!i || !i.bagKind) return null; return kinds().filter(function (k) { return k.name === i.bagKind; })[0] || { name: i.bagKind, color: '', checklist: [] }; }
+function kindHex(k) { var c = String((k && k.color) || '').trim(); if (/^#/.test(c)) return c; for (var n in KIND_COLORS) if (n.toLowerCase() === c.toLowerCase()) return KIND_COLORS[n]; return '#9ca3af'; }
+function kindTag(i) { var k = kindOf(i); return k ? '<span class="kind"><span class="kd" style="background:' + kindHex(k) + '"></span>' + esc(k.name) + '</span>' : ''; }
+function kindChecks(i) { var k = kindOf(i); return k && k.checklist && k.checklist.length ? k.checklist : TYPE_META[i.type].checks; }
 var TYPES = Object.keys(TYPE_META);
 var O2_FACTORS = { 'D': 0.16, 'Jumbo D': 0.2, 'E': 0.28, 'M': 1.56, 'G': 2.41, 'H/K': 3.14 };
 var CONDITIONS = ['OK', 'Needs Attention', 'Out of Service'];
@@ -315,6 +325,9 @@ function renderHome() {
   var chips = ['All', 'Mine'].concat(STATUSES, ['Flagged'], TYPES).map(function (c) {
     var lbl = TYPE_META[c] ? TYPE_META[c].short : c === 'Mine' ? 'My items' : c;
     return '<button class="chip' + (S.filter === c ? ' on' : '') + '" onclick="setFilter(\'' + c + '\')">' + lbl + '</button>';
+  }).join('') + kinds().map(function (k, n) {
+    var cnt = active.filter(function (i) { return i.bagKind === k.name; }), av = cnt.filter(function (i) { return i.status === 'Available'; }).length;
+    return cnt.length ? '<button class="chip' + (S.filter === 'kind:' + n ? ' on' : '') + '" onclick="setFilter(\'kind:' + n + '\')"><span class="kd" style="background:' + kindHex(k) + ';margin-right:4px;vertical-align:-1px"></span>' + esc(k.name) + ' <span style="opacity:.7">' + av + '/' + cnt.length + '</span></button>' : '';
   }).join('');
 
   $('view').innerHTML =
@@ -351,7 +364,8 @@ function renderList() {
     if (S.filter === 'Mine' && !(i.status === 'Assigned' && String(i.lastMember) === String(S.member.id))) return false;
     if (S.filter === 'Flagged' && !i.flags.length) return false;
     if (TYPE_META[S.filter] && i.type !== S.filter) return false;
-    if (q && (i.name + ' ' + i.id + ' ' + i.location + ' ' + i.homeLocation + ' ' + i.serial).toLowerCase().indexOf(q) < 0) return false;
+    if (/^kind:/.test(S.filter)) { var fk = kinds()[Number(S.filter.slice(5))]; if (!fk || i.bagKind !== fk.name) return false; }
+    if (q && (i.name + ' ' + i.id + ' ' + (i.bagKind || '') + ' ' + i.location + ' ' + i.homeLocation + ' ' + i.serial).toLowerCase().indexOf(q) < 0) return false;
     return true;
   }).sort(function (a, b) { return a.type.localeCompare(b.type) || a.id.localeCompare(b.id, undefined, { numeric: true }); });
   if (!S.loaded && !S.items.length) { $('list').innerHTML = '<div class="spinner"></div><div class="hint" style="text-align:center">Loading equipment…</div>'; return; }
@@ -361,7 +375,7 @@ function itemRow(i) {
   var w = worst(i.flags);
   var extra = '';
   return '<div class="item' + (i.status === 'Out of Service' ? ' oos' : '') + '" onclick="openItem(\'' + esc(i.id) + '\')"><div class="ic">' + TYPE_META[i.type].icon + '</div>' +
-    '<div class="mid"><div class="nm">' + esc(i.name) + ' ' + (w ? '<span class="dot ' + w + '" style="display:inline-block"></span>' : '') + '</div>' +
+    '<div class="mid"><div class="nm">' + esc(i.name) + kindTag(i) + ' ' + (w ? '<span class="dot ' + w + '" style="display:inline-block"></span>' : '') + '</div>' +
     '<div class="sub">' + esc(i.id) + ' · ' + esc(whereText(i)) + extra + '</div></div>' +
     (i.condition === 'Needs Attention' && i.status !== 'Out of Service' ? '<span class="badge b-warn" style="margin-right:4px">⚠ Attention</span>' : '') + statusBadge(i) + '</div>';
 }
@@ -385,6 +399,7 @@ function itemHtml(i, log) {
   var kv = [['ID', esc(i.id)], ['Status', statusBadge(i)],
     [out ? 'Assigned to' : 'Location', esc(out ? i.location : i.status === 'Not Available' ? 'Not in location' : (i.location || i.homeLocation || '—'))], ['Home', esc(i.homeLocation || '—')],
     ['Condition', '<span class="badge ' + (i.condition === 'OK' ? 'b-ok' : i.condition === 'Out of Service' ? 'b-bad' : 'b-warn') + '">' + esc(i.condition) + '</span>']];
+  if (i.type === 'First Responder Bag') kv.push(['Bag kind', kindTag(i) || '<span class="hint">Not set</span>']);
   if (i.type === 'AED') kv.push(['Serial', esc(i.serial || '—')], ['Adult pads exp', esc(i.padsExp || '—')], ['Peds pads exp', esc(i.pedsPadsExp || '—')], ['Battery exp', esc(i.batteryExp || '—')]);
   kv.push(['Last inspected', i.lastInspected ? fmtTs(i.lastInspected) : 'Never'], ['Last activity', ago(i.lastUpdated) + (i.lastMember ? ' · #' + esc(i.lastMember) : '')]);
   if (i.notes) kv.push(['Permanent notes', esc(i.notes)]);
@@ -398,7 +413,7 @@ function itemHtml(i, log) {
   var inactive = !i.active ? '<div class="oos-banner na-banner"><div class="big">⏸ INACTIVE</div><div class="why">This sticker is not in use' + (isAdmin() ? ' — tap Activate below to turn it back on' : '') + '</div></div>' : '';
 
   return '<div style="display:flex;align-items:center;gap:10px;margin-bottom:8px"><span style="font-size:30px">' + m.icon + '</span>' +
-    '<div style="flex:1"><h3>' + esc(i.name) + '</h3><div class="hint" style="margin:0">' + esc(i.type) + '</div></div>' +
+    '<div style="flex:1"><h3>' + esc(i.name) + '</h3><div class="hint" style="margin:0">' + esc(i.type) + kindTag(i) + '</div></div>' +
     '<button class="btn ghost sm" onclick="closeModal()">✕</button></div>' + inactive + banner + flags +
     (i.active ? '<div class="row" style="margin:12px 0">' +
       (out ? (canSignIn(i) ? '<button class="btn green" onclick="actionForm(\'' + esc(i.id) + '\',\'IN\')">✓ Sign IN</button>'
@@ -525,8 +540,9 @@ function inspectForm(id) {
   if (i.type === 'AED') fields = '<div class="row"><div><label>Adult pads exp.</label><input id="f-pads" type="date" value="' + esc(i.padsExp) + '"></div><div><label>Peds pads exp.</label><input id="f-peds" type="date" value="' + esc(i.pedsPadsExp) + '"></div></div>' +
     '<label>Battery exp. / install date</label><input id="f-batt" type="date" value="' + esc(i.batteryExp) + '">';
 
-  showModal('<h3>📋 Inspect — ' + esc(i.name) + '</h3><div class="hint">' + esc(i.id) + ' · Tap each item as you verify it</div>' +
-    '<div class="checks" style="margin-top:8px">' + m.checks.map(function (c, n) { return '<label class="ck"><input type="checkbox" data-ck="' + esc(c) + '" onchange="autoCond()"> ' + esc(c) + '</label>'; }).join('') + '</div>' +
+  var kk = kindOf(i);
+  showModal('<h3>📋 Inspect — ' + esc(i.name) + '</h3><div class="hint">' + esc(i.id) + kindTag(i) + ' · Tap each item as you verify it' + (kk && kk.checklist.length ? ' · ' + esc(kk.name) + ' checklist' : '') + '</div>' +
+    '<div class="checks" style="margin-top:8px">' + kindChecks(i).map(function (c, n) { return '<label class="ck"><input type="checkbox" data-ck="' + esc(c) + '" onchange="autoCond()"> ' + esc(c) + '</label>'; }).join('') + '</div>' +
     '<button class="btn ghost sm" style="margin-top:8px" onclick="document.querySelectorAll(\'[data-ck]\').forEach(function(c){c.checked=true});autoCond()">Check all</button>' +
     fields +
     '<label>Condition</label><select id="f-cond">' + CONDITIONS.map(function (c) { return '<option>' + c + '</option>'; }).join('') + '</select>' +
@@ -603,6 +619,40 @@ function updateAlertCount() {
   var n = Object.keys(ids).length;
   el.textContent = n > 99 ? '99+' : n; el.classList.toggle('hidden', !n);
 }
+function kindsCard() {
+  var ks = kinds();
+  return '<div class="card"><h2>🎒 FR bag kinds</h2><div class="hint" style="margin-bottom:8px">Bag colors / purposes (e.g. Blue = Medication). Each kind can have its own inspection checklist. Also editable in the "Bag Kinds" sheet tab.</div>' +
+    (ks.length ? ks.map(function (k, n) {
+      var cnt = S.items.filter(function (i) { return i.bagKind === k.name; }).length;
+      return '<div class="item" onclick="kindForm(' + n + ')"><div class="ic"><span class="kd" style="width:22px;height:22px;background:' + kindHex(k) + '"></span></div><div class="mid"><div class="nm">' + esc(k.name) + '</div><div class="sub">' + esc(k.color || 'No color') + ' · ' + cnt + ' bag' + (cnt === 1 ? '' : 's') + ' · ' + (k.checklist.length ? k.checklist.length + '-item checklist' : 'standard checklist') + '</div></div><span class="hint">Edit ›</span></div>';
+    }).join('') : '<div class="hint">No kinds yet.</div>') +
+    '<button class="btn ghost" style="margin-top:10px" onclick="kindForm(-1)">Add bag kind</button></div>';
+}
+function kindForm(n) {
+  var k = n >= 0 ? kinds()[n] : { name: '', color: 'Blue', checklist: [] }, known = KIND_COLORS[k.color] !== undefined;
+  showModal('<h3>' + (n >= 0 ? 'Edit bag kind' : 'Add bag kind') + '</h3>' +
+    '<label>Name / purpose</label><input id="k-name" value="' + esc(k.name) + '" placeholder="e.g. Medication, Trauma, Pediatric">' +
+    '<label>Bag color</label><select id="k-color" onchange="$(\'k-custom\').classList.toggle(\'hidden\',this.value!==\'_\')">' + Object.keys(KIND_COLORS).map(function (c) { return '<option' + (c === k.color ? ' selected' : '') + '>' + c + '</option>'; }).join('') + '<option value="_"' + (!known && k.color ? ' selected' : '') + '>Other…</option></select>' +
+    '<input id="k-custom" class="' + (!known && k.color ? '' : 'hidden') + '" style="margin-top:6px" placeholder="Color name or #hex" value="' + esc(known ? '' : k.color) + '">' +
+    '<label>Inspection checklist — one item per line</label><textarea id="k-checks" rows="8" placeholder="Leave blank to use the standard FR bag checklist:\n' + esc(TYPE_META['First Responder Bag'].checks.join('\n')) + '">' + esc(k.checklist.join('\n')) + '</textarea>' +
+    '<button class="btn ghost sm" style="margin-top:6px" onclick="$(\'k-checks\').value=TYPE_META[\'First Responder Bag\'].checks.join(\'\\n\')">Start from standard checklist</button>' +
+    '<div class="row" style="margin-top:14px"><button class="btn ghost" onclick="closeModal();go(\'admin\')">Cancel</button><button class="btn" id="f-go" onclick="saveKind(' + n + ')">Save</button></div>' +
+    (n >= 0 ? '<button class="btn ghost" id="k-del" style="margin-top:10px;color:var(--bad)" onclick="delKind(' + n + ')">Delete kind</button>' : ''));
+}
+function saveKind(n) {
+  var old = n >= 0 ? kinds()[n].name : '', col = $('k-color').value === '_' ? $('k-custom').value.trim() : $('k-color').value;
+  var b = { action: 'saveBagKind', oldName: old, name: $('k-name').value.trim(), color: col, checklist: $('k-checks').value.split('\n').map(function (x) { return x.trim(); }).filter(String) };
+  if (!b.name) { toast('Name required'); return; }
+  busy(true);
+  apiPost(b).then(function (d) { S.cfg.bagKinds = d.kinds; if (old && old !== b.name) S.items.forEach(function (i) { if (i.bagKind === old) i.bagKind = b.name; }); saveCache(); closeModal(); toast('✓ Saved'); go('admin'); })
+    .catch(function (e) { busy(false); toast('⚠ ' + e.message, 4000); });
+}
+function delKind(n) {
+  var el = $('k-del'), k = kinds()[n];
+  if (!el.dataset.sure) { el.dataset.sure = 1; el.textContent = 'Tap again to delete "' + k.name + '" (bags become "Not set")'; return; }
+  apiPost({ action: 'deleteBagKind', name: k.name }).then(function (d) { S.cfg.bagKinds = d.kinds; S.items.forEach(function (i) { if (i.bagKind === k.name) i.bagKind = ''; }); saveCache(); closeModal(); toast('Deleted'); go('admin'); })
+    .catch(function (e) { toast('⚠ ' + e.message, 4000); });
+}
 function notifCard() {
   return '<div class="card"><h2>🔔 App notifications <span class="badge ' + (notifOn() ? 'b-ok">On' : 'b-na">Off') + '</span></h2><div class="hint" style="margin-bottom:10px">Get a phone notification when an item expires, goes Out of Service, needs attention or goes missing. Works while the app is open or in the background. On iPhone, add the app to your Home Screen first. This setting is just for this phone.</div>' +
     (notifOn() ? '<div class="row"><button class="btn ghost" onclick="testNotif()">Send test</button><button class="btn ghost" style="color:var(--bad)" onclick="setNotif(false)">Turn off</button></div>'
@@ -638,6 +688,7 @@ function renderAdmin() {
   $('view').innerHTML =
     '<div class="card"><h2>➕ Equipment</h2><div class="row"><button class="btn" onclick="editItemForm()">Add item</button><button class="btn ghost" onclick="stickerPicker()">🖨 QR stickers</button></div></div>' +
     (retired.length ? '<div class="card"><h2>⏸ Inactive items (' + retired.length + ')</h2><div class="hint" style="margin-bottom:6px">Hidden from the dashboard. Tap one to activate it again.</div>' + retired.map(itemRow).join('') + '</div>' : '') +
+    kindsCard() +
     '<div class="card"><h2>👥 Members</h2><div id="mem"><div class="spinner"></div></div><button class="btn ghost" style="margin-top:10px" onclick="memberForm()">Add member</button></div>' +
     notifCard() +
     '<div class="card"><h2>Account</h2><div class="hint" style="margin-bottom:10px">Backend: ' + esc(API_URL.slice(0, 60)) + '…</div><button class="btn ghost" onclick="logout()">Log out</button></div>';
@@ -690,6 +741,9 @@ function editItemForm(id) {
 function typeFieldsFor(type, i) {
   i = i || {};
   var h = '';
+  if (type === 'First Responder Bag') h = '<label>Bag kind (color / purpose)</label><select id="e-kind"><option value="">— Not set —</option>' +
+    kinds().map(function (k) { return '<option value="' + esc(k.name) + '"' + (k.name === i.bagKind ? ' selected' : '') + '>' + esc(k.name) + (k.color ? ' (' + esc(k.color) + ')' : '') + '</option>'; }).join('') + '</select>' +
+    (isAdmin() && !kinds().length ? '<div class="hint">Add bag kinds in Admin → FR bag kinds.</div>' : '');
   if (type === 'AED') h = '<label>Serial #</label><input id="e-serial" value="' + esc(i.serial || '') + '">' +
     '<div class="row"><div><label>Adult pads exp.</label><input id="e-pads" type="date" value="' + esc(i.padsExp || '') + '"></div><div><label>Peds pads exp.</label><input id="e-peds" type="date" value="' + esc(i.pedsPadsExp || '') + '"></div></div>' +
     '<label>Battery exp.</label><input id="e-batt" type="date" value="' + esc(i.batteryExp || '') + '">';
@@ -700,6 +754,7 @@ function saveItem(id) {
   var b = { action: id ? 'updateItem' : 'addItem', type: type, name: $('e-name').value.trim(), homeLocation: $('e-home').value.trim(), notes: $('e-notes').value.trim() };
   if (id) { b.id = id; b.condition = $('e-cond').value; } else if ($('e-id').value.trim()) b.id = $('e-id').value.trim().toUpperCase();
   if (!b.name) { toast('Name required'); return; }
+  if ($('e-kind')) b.bagKind = $('e-kind').value;
   if (type === 'AED') { b.serial = $('e-serial').value.trim(); b.padsExp = $('e-pads').value; b.pedsPadsExp = $('e-peds').value; b.batteryExp = $('e-batt').value; }
   busy(true);
   apiPost(b).then(function (d) {
@@ -790,7 +845,9 @@ function stickerCanvas(it, logo) {
   while (x.measureText(nm).width > tw && nm.length > 3) nm = nm.slice(0, -2) + '…';
   x.fillText(nm, tx, y + .23 * D);
   x.fillStyle = '#c8102e'; x.font = '800 ' + (10 / 72 * D) + 'px Helvetica,Arial,sans-serif'; x.fillText(it.id, tx, y + .41 * D);
-  x.fillStyle = '#333'; x.font = (5.5 / 72 * D) + 'px Helvetica,Arial,sans-serif'; x.fillText('Scan to sign out · sign in', tx, y + .55 * D);
+  var kd = kindOf(it);
+  x.fillStyle = '#333'; x.font = (5.5 / 72 * D) + 'px Helvetica,Arial,sans-serif'; x.fillText((kd ? kd.name.toUpperCase() + ' BAG · ' : '') + 'Scan to sign out · sign in', tx, y + .55 * D);
+  if (kd) { x.fillStyle = kindHex(kd); x.fillRect(c.width - .07 * D, 0, .07 * D, D); }
   return c;
 }
 function saveBlob(blob, name) { var a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = name; document.body.appendChild(a); a.click(); setTimeout(function () { a.remove(); }, 1000); return a.href; }
