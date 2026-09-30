@@ -52,7 +52,7 @@ textarea{min-height:70px;resize:vertical}
 .gl.active{border-color:var(--navy)}
 .gl .n{font-size:22px;font-weight:900;line-height:1.1}.gl .l{font-size:11px;font-weight:700}
 .gl.av{background:var(--okbg);color:var(--ok)}.gl.warn{background:var(--warnbg);color:var(--warn)}.gl.as{background:#e6ecfa;color:var(--navy)}.gl.os{background:var(--badbg);color:var(--bad)}.gl.na{background:#eceef1;color:#4b5563}
-.who{display:flex;justify-content:space-between;gap:8px;font-size:13px;padding:6px 0;border-top:1px solid var(--border);cursor:pointer}
+.who{display:flex;flex-direction:column;gap:2px;font-size:13px;padding:6px 0;border-top:1px solid var(--border);cursor:pointer}.who span{font-size:12px;color:var(--text2)}
 .who b{font-weight:700}
 .scan-btn{display:flex;align-items:center;gap:12px;background:var(--red);color:#fff;border-radius:14px;padding:16px;margin-bottom:12px;cursor:pointer;border:0;width:100%;text-align:left;font-weight:700;font-size:17px}
 .scan-btn span.big{font-size:28px}
@@ -68,7 +68,7 @@ textarea{min-height:70px;resize:vertical}
 .oos-banner .why{font-size:14px;margin-top:4px;opacity:.95}
 .na-banner{background:#4b5563}.warn-banner{background:#b45309}
 .item .ic{font-size:22px;width:30px;text-align:center}
-.item .mid{flex:1;min-width:0}.item .nm{font-weight:700}.item .sub{font-size:12px;color:var(--text2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.item .mid{flex:1;min-width:0}.item .nm{font-weight:700}.item .sub{font-size:12px;color:var(--text2);overflow-wrap:anywhere}
 .badge{display:inline-block;font-size:12px;font-weight:700;padding:3px 9px;border-radius:12px;white-space:nowrap}
 .b-in{background:var(--okbg);color:var(--ok)}.b-out{background:var(--badbg);color:var(--bad)}.b-asg{background:#e6ecfa;color:var(--navy)}.b-na{background:#eceef1;color:#4b5563}
 .b-warn{background:var(--warnbg);color:var(--warn)}.b-bad{background:var(--badbg);color:var(--bad)}.b-ok{background:var(--okbg);color:var(--ok)}
@@ -353,7 +353,7 @@ function glanceHtml(active) {
   var by = {};
   asg.forEach(function (i) { (by[i.location] = by[i.location] || []).push(i); });
   var who = Object.keys(by).sort().map(function (k) {
-    return '<div class="who" onclick="setFilter(\'Assigned\')"><b>👤 ' + esc(k) + '</b><span>' + by[k].map(function (i) { return esc(i.name); }).join(', ') + '</span></div>';
+    return '<div class="who" onclick="setFilter(\'Assigned\')"><b>👤 ' + esc(k) + '</b>' + by[k].map(function (i) { return '<span>' + itemIcon(i) + ' ' + esc(i.name) + ' — out since ' + fmtTs(i.lastUpdated) + '</span>'; }).join('') + '</div>';
   }).join('');
   return '<div class="card"><h2 style="margin-bottom:0">At a glance <span class="hint" style="font-weight:500">· ' + active.length + ' items</span></h2>' +
     '<div class="glance">' + box('Available', 'av', 'Available') + box('Assigned', 'as', 'Assigned') + box('Out of Service', 'os', 'Out of Svc') + box('Not Available', 'na', 'Not Avail.') + '</div>' +
@@ -385,7 +385,7 @@ function itemRow(i) {
   var extra = '';
   return '<div class="item' + (i.status === 'Out of Service' ? ' oos' : '') + '" onclick="openItem(\'' + esc(i.id) + '\')"><div class="ic">' + itemIcon(i) + '</div>' +
     '<div class="mid"><div class="nm">' + esc(i.name) + kindTag(i) + ' ' + (w ? '<span class="dot ' + w + '" style="display:inline-block"></span>' : '') + '</div>' +
-    '<div class="sub">' + esc(i.id) + ' · ' + esc(whereText(i)) + extra + '</div></div>' +
+    '<div class="sub">' + esc(i.id) + ' · ' + esc(whereText(i)) + (i.status === 'Assigned' && i.lastUpdated ? ' · 🕒 out since ' + fmtTs(i.lastUpdated) : '') + extra + '</div></div>' +
     (i.condition === 'Needs Attention' && i.status !== 'Out of Service' ? '<span class="badge b-warn" style="margin-right:4px">⚠ Attention</span>' : '') + statusBadge(i) + '</div>';
 }
 
@@ -406,8 +406,8 @@ function openItem(id) {
 function itemHtml(i, log) {
   var m = TYPE_META[i.type], out = i.status === 'Assigned';
   var kv = [['ID', esc(i.id)], ['Status', statusBadge(i)],
-    [out ? 'Assigned to' : 'Location', esc(out ? i.location : i.status === 'Not Available' ? 'Not in location' : (i.location || i.homeLocation || '—'))], ['Home', esc(i.homeLocation || '—')],
-    ['Condition', '<span class="badge ' + (i.condition === 'OK' ? 'b-ok' : i.condition === 'Out of Service' ? 'b-bad' : 'b-warn') + '">' + esc(i.condition) + '</span>']];
+    [out ? 'Assigned to' : 'Location', esc(out ? i.location : i.status === 'Not Available' ? 'Not in location' : (i.location || i.homeLocation || '—'))]].concat(out && i.lastUpdated ? [['Out since', fmtTs(i.lastUpdated) + ' <span class="hint">(' + ago(i.lastUpdated) + ')</span>']] : []).concat([['Home', esc(i.homeLocation || '—')],
+    ['Condition', '<span class="badge ' + (i.condition === 'OK' ? 'b-ok' : i.condition === 'Out of Service' ? 'b-bad' : 'b-warn') + '">' + esc(i.condition) + '</span>']]);
   if (i.type === 'First Responder Bag') kv.push(['Bag kind', kindTag(i) || '<span class="hint">Not set</span>']);
   if (i.type === 'AED') kv.push(['Serial', esc(i.serial || '—')], ['Adult pads exp', esc(i.padsExp || '—')], ['Peds pads exp', esc(i.pedsPadsExp || '—')], ['Battery exp', esc(i.batteryExp || '—')]);
   kv.push(['Last inspected', i.lastInspected ? fmtTs(i.lastInspected) : 'Never'], ['Last activity', ago(i.lastUpdated) + (i.lastMember ? ' · #' + esc(i.lastMember) : '')]);
