@@ -442,6 +442,7 @@ function itemHtml(i, log) {
   return '<div style="display:flex;align-items:center;gap:10px;margin-bottom:8px"><span style="font-size:30px;line-height:1">' + itemIcon(i) + '</span>' +
     '<div style="flex:1"><h3>' + esc(i.name) + '</h3><div class="hint" style="margin:0">' + esc(i.type) + kindTag(i) + '</div></div>' +
     '<button class="btn ghost sm" onclick="closeModal()">✕</button></div>' + inactive + banner + flags +
+    '<div class="card" style="box-shadow:none;border:1px solid var(--border);margin-top:10px"><div class="kv">' + kv.map(function (p) { return '<div>' + p[0] + '</div><div>' + p[1] + '</div>'; }).join('') + '</div></div>' +
     (i.active ? '<div class="row" style="margin:12px 0">' +
       (out ? (canSignIn(i) ? '<button class="btn green" onclick="actionForm(\'' + esc(i.id) + '\',\'IN\')">✓ Sign IN</button>'
              : '<button class="btn ghost" disabled style="opacity:1;color:var(--text2);font-size:13px">🔒 Only ' + esc(holderName(i)) + ' or an admin can sign in</button>')
@@ -452,7 +453,6 @@ function itemHtml(i, log) {
       (!isNA(i) && i.status !== 'Not Available' ? '<button class="btn ghost sm" style="width:100%" onclick="statusForm(\'' + esc(i.id) + '\',\'Out of Service\')">⚠ Needs attention (empty, broken…)</button>' : '') +
       (i.status === 'Not Available' ? '<button class="btn ghost sm" style="width:100%" onclick="statusForm(\'' + esc(i.id) + '\',\'Available\')">✅ Found — Available</button>' : '') +
       '</div>' : '') +
-    '<div class="card" style="box-shadow:none;border:1px solid var(--border)"><div class="kv">' + kv.map(function (p) { return '<div>' + p[0] + '</div><div>' + p[1] + '</div>'; }).join('') + '</div></div>' +
     '<h2 style="font-size:15px;margin:6px 0 8px">History</h2>' + hist;
 }
 function logRow(l) {
