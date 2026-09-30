@@ -89,6 +89,7 @@ textarea{min-height:70px;resize:vertical}
 .modal{position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:100;display:flex;align-items:flex-end;justify-content:center}
 .sheet{background:#fff;width:100%;max-width:640px;max-height:92vh;overflow-y:auto;border-radius:18px 18px 0 0;padding:16px 16px calc(16px + env(safe-area-inset-bottom))}
 .sheet h3{margin:0 0 6px;font-size:18px}
+.sheet.tall{height:92vh}
 .toast{position:fixed;left:50%;bottom:90px;transform:translateX(-50%);background:#111;color:#fff;padding:12px 18px;border-radius:12px;font-weight:600;z-index:200;max-width:90vw;text-align:center}
 #login{min-height:100vh;display:flex;align-items:center;justify-content:center;padding:20px;background:var(--navy)}
 #login .card{width:100%;max-width:360px;text-align:center;padding:26px 20px}
@@ -267,7 +268,7 @@ function confirmLogout() {
     '<div class="row"><button class="btn ghost" onclick="closeModal()">Cancel</button><button class="btn red" onclick="closeModal();logout()">Log out</button></div>');
 }
 function logout() {
-  store('tvac_pin', null); store('tvac_member', null); store('tvac_cache', null); S.pin = null; S.member = null;
+  store('tvac_pin', null); store('tvac_member', null); store('tvac_cache', null); store('tvac_hist', null); S.logs = null; S.pin = null; S.member = null;
   $('app').classList.add('hidden'); $('login').classList.remove('hidden'); $('pin').value = '';
 }
 function startApp() {
@@ -397,16 +398,25 @@ function itemRow(i) {
 function openItem(id) {
   var local = getItem(id), token = S.openTok = (S.openTok || 0) + 1;
   // show what we already have instantly; fetch fresh status + history in the background
-  showModal(local ? itemHtml(local, 'loading') : '<div class="spinner"></div>');
+  // fixed-height sheet + cached history = nothing jumps when fresh data lands
+  if (!S.logs) { try { S.logs = JSON.parse(localStorage.getItem('tvac_hist') || '{}'); } catch (e) { S.logs = {}; } }
+  var shown = local ? JSON.stringify(local) : '';
+  showModal(local ? itemHtml(local, S.logs[id] || 'loading') : '<div class="spinner"></div>', 'tall');
   apiGet({ action: 'getItem', id: id, pin: S.pin }).then(function (d) {
     var idx = S.items.findIndex(function (i) { return i.id === d.item.id; });
     if (idx >= 0) S.items[idx] = d.item; else S.items.push(d.item);
-    if (S.openTok === token && $('modal-root').innerHTML && !$('f-go')) showModal(itemHtml(d.item, d.log));
+    S.logs[id] = (d.log || []).slice(0, 15);
+    try { localStorage.setItem('tvac_hist', JSON.stringify(S.logs)); } catch (e) {}
+    if (S.openTok !== token || !$('modal-root').innerHTML || $('f-go')) return;
+    var sh = document.querySelector('#modal-root .sheet');
+    if (JSON.stringify(d.item) !== shown || !$('hist')) { var y = sh.scrollTop; sh.innerHTML = itemHtml(d.item, d.log); sh.scrollTop = y; }
+    else $('hist').innerHTML = histHtml(d.log);
   }).catch(function (e) {
     if (S.openTok !== token) return;
-    if (local) { if (!$('f-go')) showModal(itemHtml(local, null)); } else { closeModal(); toast('⚠ ' + e.message); }
+    if (local) { if ($('hist') && !S.logs[id]) $('hist').innerHTML = histHtml(null); } else { closeModal(); toast('⚠ ' + e.message); }
   });
 }
+function histHtml(log) { return log === 'loading' ? '<div class="hint">Loading history…</div>' : log ? (log.length ? log.map(logRow).join('') : '<div class="hint">No history yet</div>') : '<div class="hint">History unavailable right now</div>'; }
 function itemHtml(i, log) {
   var m = TYPE_META[i.type], out = i.status === 'Assigned';
   var kv = [['ID', esc(i.id)], ['Status', statusBadge(i)],
@@ -420,8 +430,8 @@ function itemHtml(i, log) {
     : i.status === 'Not Available' ? '<div class="oos-banner na-banner"><div class="big">❓ NOT IN LOCATION</div>' + (i.statusNote ? '<div class="why">' + esc(i.statusNote) + '</div>' : '') + '</div>' : '';
   var flags = i.flags.filter(function (f) { return !/^(Out of Service|Unavailable|Needs Attention|Not Available)/i.test(f.text); })
     .map(function (f) { return '<div class="flag ' + f.level + '">⚠ ' + esc(f.text) + '</div>'; }).join('');
-  var hist = log === 'loading' ? '<div class="hint">Loading history…</div>' : log ? (log.length ? log.map(logRow).join('') : '<div class="hint">No history yet</div>') : '<div class="hint">History unavailable right now</div>';
-  var inactive = !i.active ? '<div class="oos-banner na-banner"><div class="big">⏸ INACTIVE</div><div class="why">This sticker is not in use' + (isAdmin() ? ' — tap Activate below to turn it back on' : '') + '</div></div>' : '';
+  var hist = '<div id="hist">' + histHtml(log) + '</div>';
+  var inactive = !i.active ? '<div class="oos-banner na-banner"><div class="big">⏸ INACTIVE</div><div class="why">This sticker is not in use' + (isAdmin() ? ' — turn it back on in Admin → Active stickers' : '') + '</div></div>' : '';
 
   return '<div style="display:flex;align-items:center;gap:10px;margin-bottom:8px"><span style="font-size:30px;line-height:1">' + itemIcon(i) + '</span>' +
     '<div style="flex:1"><h3>' + esc(i.name) + '</h3><div class="hint" style="margin:0">' + esc(i.type) + kindTag(i) + '</div></div>' +
@@ -991,9 +1001,9 @@ function scanned(text) {
 }
 
 // ════════ MODAL ════════
-function showModal(html) {
+function showModal(html, cls) {
   var root = $('modal-root');
-  root.innerHTML = '<div class="modal" onclick="if(event.target===this)closeModal()"><div class="sheet">' + html + '</div></div>';
+  root.innerHTML = '<div class="modal" onclick="if(event.target===this)closeModal()"><div class="sheet' + (cls ? ' ' + cls : '') + '">' + html + '</div></div>';
   document.body.style.overflow = 'hidden';
 }
 function closeModal() { $('modal-root').innerHTML = ''; document.body.style.overflow = ''; if (location.search.indexOf('id=') >= 0) history.replaceState(null, '', APP_URL); }
