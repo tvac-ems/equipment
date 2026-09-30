@@ -198,11 +198,14 @@ function condLabel(c) { return c === 'Out of Service' ? 'Unavailable (at station
 var STATUS_META = {
   'Available':      { cls: 'b-in',  short: 'Available',  icon: '✅' },
   'Assigned':       { cls: 'b-asg', short: 'Signed out', icon: '👤' },
-  'Out of Service': { cls: 'b-bad', short: 'Unavailable', icon: '⛔' },
+  'Out of Service': { cls: 'b-warn', short: 'Needs attention', icon: '⚠' },
   'Not Available':  { cls: 'b-na',  short: 'Not Avail.', icon: '❓' }
 };
 var STATUSES = Object.keys(STATUS_META);
-function statusBadge(i) { var m = STATUS_META[i.status] || STATUS_META['Available']; return '<span class="badge ' + m.cls + '">' + m.short + '</span>'; }
+function isNA(i) { return i.status !== 'Assigned' && i.status !== 'Not Available' && (i.status === 'Out of Service' || (i.condition && i.condition !== 'OK')); }
+function effStatus(i) { return isNA(i) ? 'Out of Service' : i.status; }
+function flagText(t) { return String(t).replace(/^(Unavailable|Out of Service)/, 'Needs attention'); }
+function statusBadge(i) { var m = STATUS_META[effStatus(i)] || STATUS_META['Available']; return '<span class="badge ' + m.cls + '">' + m.short + '</span>'; }
 function whereText(i) { return i.status === 'Assigned' ? '👤 ' + (i.location || '—') : i.status === 'Not Available' ? '❓ Not in location' : '📍 ' + (i.location || i.homeLocation || '—'); }
 
 // ════════ STATE ════════
@@ -282,8 +285,8 @@ function startApp() {
 }
 function quickFlags(i) { // instant local flags until the server's version arrives
   var why = i.statusNote ? ': ' + i.statusNote : '';
-  i.flags = (i.flags || []).filter(function (f) { return !/^(Out of Service|Unavailable|Needs Attention|Not Available)/.test(f.text); });
-  if (i.status === 'Out of Service') i.flags.unshift({ level: 'bad', text: 'Unavailable' + why });
+  i.flags = (i.flags || []).filter(function (f) { return !/^(Out of Service|Unavailable|Needs Attention|Not Available)/i.test(f.text); });
+  if (i.status === 'Out of Service') i.flags.unshift({ level: 'warn', text: 'Needs attention' + why });
   else if (i.condition === 'Needs Attention') i.flags.unshift({ level: 'warn', text: 'Needs Attention' + why });
   if (i.status === 'Not Available') i.flags.unshift({ level: 'bad', text: 'Not Available / missing' });
 }
@@ -322,14 +325,14 @@ function renderHome() {
     return '<div class="tile' + (S.filter === t ? ' active' : '') + '" onclick="setFilter(\'' + t + '\')">' +
       '<div class="ic">' + TYPE_META[t].icon + '</div><div class="n">' + list.length + '</div><div class="l">' + TYPE_META[t].short + '</div>' +
       '<div class="sub"><span style="color:var(--ok)">' + av + ' avail</span>' + (asg ? ' · <span style="color:var(--navy)">' + asg + ' asg</span>' : '') +
-      (oos ? ' · <span style="color:var(--bad)">' + oos + ' ⛔</span>' : '') + '</div></div>';
+      (oos ? ' · <span style="color:var(--warn)">' + oos + ' ⚠</span>' : '') + '</div></div>';
   }).join('');
 
   var flagged = active.filter(function (i) { return i.flags.length; })
     .sort(function (a, b) { return (worst(b.flags) === 'bad') - (worst(a.flags) === 'bad'); });
   var alerts = flagged.length ? '<div class="card"><h2>⚠ Needs attention (' + flagged.length + ')</h2>' +
     flagged.slice(0, 6).map(function (i) {
-      return '<div class="flag ' + worst(i.flags) + '" style="cursor:pointer" onclick="openItem(\'' + esc(i.id) + '\')"><span>' + itemIcon(i) + '</span><span><b>' + esc(i.name) + '</b> — ' + i.flags.map(function (f) { return esc(f.text); }).join(' · ') + '</span></div>';
+      return '<div class="flag ' + worst(i.flags) + '" style="cursor:pointer" onclick="openItem(\'' + esc(i.id) + '\')"><span>' + itemIcon(i) + '</span><span><b>' + esc(i.name) + '</b> — ' + i.flags.map(function (f) { return esc(flagText(f.text)); }).join(' · ') + '</span></div>';
     }).join('') + '<div class="hint" style="cursor:pointer;font-weight:700;color:var(--navy);margin-top:4px" onclick="go(\'alerts\')">' + (flagged.length > 6 ? '+ ' + (flagged.length - 6) + ' more — ' : '') + 'View all alerts →</div>' + '</div>' : '';
 
   var chips = ['All', 'Mine'].concat(STATUSES.filter(function (x) { return x !== 'Not Available'; }), ['Flagged'], TYPES).map(function (c) {
@@ -348,8 +351,8 @@ function renderHome() {
   renderList();
 }
 function glanceHtml(active) {
-  var c = function (st) { return active.filter(function (i) { return i.status === st; }).length; };
-  var box = function (st, cls, lbl) { return '<div class="gl ' + cls + (S.filter === st ? ' active' : '') + '" onclick="setFilter(\'' + st + '\')"><div class="n">' + (c(st) + (st === 'Out of Service' ? c('Not Available') : 0)) + '</div><div class="l">' + lbl + '</div></div>'; };
+  var c = function (st) { return active.filter(function (i) { return st === 'Out of Service' ? isNA(i) || i.status === 'Not Available' : effStatus(i) === st; }).length; };
+  var box = function (st, cls, lbl) { return '<div class="gl ' + cls + (S.filter === st ? ' active' : '') + '" onclick="setFilter(\'' + st + '\')"><div class="n">' + c(st) + '</div><div class="l">' + lbl + '</div></div>'; };
   var asg = active.filter(function (i) { return i.status === 'Assigned'; });
   var by = {};
   asg.forEach(function (i) { (by[i.location] = by[i.location] || []).push(i); });
@@ -357,11 +360,11 @@ function glanceHtml(active) {
     return '<div class="who" onclick="setFilter(\'Assigned\')"><b>👤 ' + esc(k) + '</b>' + by[k].map(function (i) { return '<span>' + itemIcon(i) + ' ' + esc(i.name) + ' — out since ' + fmtTs(i.lastUpdated) + '</span>'; }).join('') + '</div>';
   }).join('');
   return '<div class="card"><h2 style="margin-bottom:0">At a glance <span class="hint" style="font-weight:500">· ' + active.length + ' items</span></h2>' +
-    '<div class="glance">' + box('Available', 'av', 'Available') + box('Assigned', 'as', 'Signed out') + box('Out of Service', 'os', 'Unavailable') + '</div>' +
+    '<div class="glance">' + box('Available', 'av', 'Available') + box('Assigned', 'as', 'Signed out') + box('Out of Service', 'warn', '⚠ Needs attention') + '</div>' +
     (function () {
       var g = {}; alertGroups().forEach(function (x) { g[x.key] = x.items.length; });
       var ab = function (n, cls, lbl) { return '<div class="gl ' + cls + '" onclick="go(\'alerts\')"><div class="n">' + n + '</div><div class="l">' + lbl + '</div></div>'; };
-      return '<div class="glance" style="grid-template-columns:repeat(3,1fr)">' + ab(g.exp || 0, 'os', '🔴 Expired') + ab(g.na || 0, 'warn', '⚠ Needs Attn') + ab(g.soon || 0, 'warn', '🟠 Expiring soon') + '</div>';
+      return '<div class="glance" style="grid-template-columns:repeat(2,1fr)">' + ab(g.exp || 0, 'os', '🔴 Expired') + ab(g.soon || 0, 'warn', '🟠 Expiring soon') + '</div>';
     })() +
     (who ? '<div style="margin-top:10px"><div class="hint" style="font-weight:700;margin-bottom:2px">Who has what</div>' + who + '</div>' : '') + '</div>';
 }
@@ -370,7 +373,7 @@ function renderList() {
   var q = S.q.toLowerCase().trim();
   var list = S.items.filter(function (i) {
     if (!i.active) return false;
-    if (STATUS_META[S.filter] && i.status !== S.filter) return false;
+    if (STATUS_META[S.filter] && (S.filter === 'Out of Service' ? !(isNA(i) || i.status === 'Not Available') : effStatus(i) !== S.filter)) return false;
     if (S.filter === 'Mine' && !(i.status === 'Assigned' && String(i.lastMember) === String(S.member.id))) return false;
     if (S.filter === 'Flagged' && !i.flags.length) return false;
     if (TYPE_META[S.filter] && i.type !== S.filter) return false;
@@ -387,7 +390,7 @@ function itemRow(i) {
   return '<div class="item' + (i.status === 'Out of Service' ? ' oos' : '') + '" onclick="openItem(\'' + esc(i.id) + '\')"><div class="ic">' + itemIcon(i) + '</div>' +
     '<div class="mid"><div class="nm">' + esc(i.name) + kindTag(i) + ' ' + (w ? '<span class="dot ' + w + '" style="display:inline-block"></span>' : '') + '</div>' +
     '<div class="sub">' + esc(i.id) + ' · ' + esc(whereText(i)) + (i.status === 'Assigned' && i.lastUpdated ? ' · 🕒 out since ' + fmtTs(i.lastUpdated) : '') + extra + '</div></div>' +
-    (i.condition === 'Needs Attention' && i.status !== 'Out of Service' ? '<span class="badge b-warn" style="margin-right:4px">⚠ Attention</span>' : '') + statusBadge(i) + '</div>';
+    statusBadge(i) + '</div>';
 }
 
 // ════════ ITEM DETAIL ════════
@@ -407,17 +410,15 @@ function openItem(id) {
 function itemHtml(i, log) {
   var m = TYPE_META[i.type], out = i.status === 'Assigned';
   var kv = [['ID', esc(i.id)], ['Status', statusBadge(i)],
-    [out ? 'Assigned to' : 'Location', esc(out ? i.location : i.status === 'Not Available' ? 'Not in location' : (i.location || i.homeLocation || '—'))]].concat(out && i.lastUpdated ? [['Out since', fmtTs(i.lastUpdated) + ' <span class="hint">(' + ago(i.lastUpdated) + ')</span>']] : []).concat([['Home', esc(i.homeLocation || '—')],
-    ['Condition', '<span class="badge ' + (i.condition === 'OK' ? 'b-ok' : i.condition === 'Out of Service' ? 'b-bad' : 'b-warn') + '">' + esc(i.condition === 'Out of Service' ? 'Unavailable' : i.condition) + '</span>']]);
+    [out ? 'Assigned to' : 'Location', esc(out ? i.location : i.status === 'Not Available' ? 'Not in location' : (i.location || i.homeLocation || '—'))]].concat(out && i.lastUpdated ? [['Out since', fmtTs(i.lastUpdated) + ' <span class="hint">(' + ago(i.lastUpdated) + ')</span>']] : []).concat([['Home', esc(i.homeLocation || '—')]]);
   if (i.type === 'First Responder Bag') kv.push(['Bag kind', kindTag(i) || '<span class="hint">Not set</span>']);
   if (i.type === 'AED') kv.push(['Serial', esc(i.serial || '—')], ['Adult pads exp', esc(i.padsExp || '—')], ['Peds pads exp', esc(i.pedsPadsExp || '—')], ['Battery exp', esc(i.batteryExp || '—')]);
   kv.push(['Last activity', ago(i.lastUpdated) + (i.lastMember ? ' · #' + esc(i.lastMember) : '')]);
   if (i.notes) kv.push(['Permanent notes', esc(i.notes)]);
 
-  var banner = i.status === 'Out of Service' ? '<div class="oos-banner"><div class="big">⛔ UNAVAILABLE — AT STATION</div><div class="why">Do not take' + (i.statusNote ? ' — ' + esc(i.statusNote) : '') + '</div></div>'
-    : i.condition === 'Needs Attention' ? '<div class="oos-banner warn-banner"><div class="big">⚠ NEEDS ATTENTION</div>' + (i.statusNote ? '<div class="why">' + esc(i.statusNote) + '</div>' : '') + '</div>'
+  var banner = isNA(i) ? '<div class="oos-banner warn-banner"><div class="big">⚠ NEEDS ATTENTION — AT STATION</div><div class="why">Do not take' + (i.statusNote ? ' — ' + esc(i.statusNote) : '') + '</div></div>'
     : i.status === 'Not Available' ? '<div class="oos-banner na-banner"><div class="big">❓ NOT IN LOCATION</div>' + (i.statusNote ? '<div class="why">' + esc(i.statusNote) + '</div>' : '') + '</div>' : '';
-  var flags = i.flags.filter(function (f) { return !/^(Out of Service|Unavailable|Needs Attention|Not Available)/.test(f.text); })
+  var flags = i.flags.filter(function (f) { return !/^(Out of Service|Unavailable|Needs Attention|Not Available)/i.test(f.text); })
     .map(function (f) { return '<div class="flag ' + f.level + '">⚠ ' + esc(f.text) + '</div>'; }).join('');
   var hist = log === 'loading' ? '<div class="hint">Loading history…</div>' : log ? (log.length ? log.map(logRow).join('') : '<div class="hint">No history yet</div>') : '<div class="hint">History unavailable right now</div>';
   var inactive = !i.active ? '<div class="oos-banner na-banner"><div class="big">⏸ INACTIVE</div><div class="why">This sticker is not in use' + (isAdmin() ? ' — tap Activate below to turn it back on' : '') + '</div></div>' : '';
@@ -428,12 +429,11 @@ function itemHtml(i, log) {
     (i.active ? '<div class="row" style="margin:12px 0">' +
       (out ? (canSignIn(i) ? '<button class="btn green" onclick="actionForm(\'' + esc(i.id) + '\',\'IN\')">✓ Sign IN</button>'
              : '<button class="btn ghost" disabled style="opacity:1;color:var(--text2);font-size:13px">🔒 Only ' + esc(holderName(i)) + ' or an admin can sign in</button>')
-           : i.status === 'Out of Service' ? '<button class="btn green" onclick="statusForm(\'' + esc(i.id) + '\',\'Available\')">✅ Mark available</button>'
-           : i.condition === 'Needs Attention' ? '<button class="btn green" onclick="statusForm(\'' + esc(i.id) + '\',\'Available\')">✓ Fixed — mark OK</button>'
+           : isNA(i) ? '<button class="btn green" onclick="statusForm(\'' + esc(i.id) + '\',\'Available\')">✅ Fixed — mark available</button>'
            : '<button class="btn red" onclick="actionForm(\'' + esc(i.id) + '\',\'OUT\')">↗ Sign OUT</button>') +
       '</div>' +
       '<div class="row" style="margin-bottom:12px">' +
-      (i.status !== 'Out of Service' && i.status !== 'Not Available' ? '<button class="btn ghost sm" style="width:100%" onclick="statusForm(\'' + esc(i.id) + '\',\'Out of Service\')">⛔ Mark unavailable (empty, broken…)</button>' : '') +
+      (!isNA(i) && i.status !== 'Not Available' ? '<button class="btn ghost sm" style="width:100%" onclick="statusForm(\'' + esc(i.id) + '\',\'Out of Service\')">⚠ Needs attention (empty, broken…)</button>' : '') +
       (i.status === 'Not Available' ? '<button class="btn ghost sm" style="width:100%" onclick="statusForm(\'' + esc(i.id) + '\',\'Available\')">✅ Found — Available</button>' : '') +
       '</div>' : '') +
     '<div class="card" style="box-shadow:none;border:1px solid var(--border)"><div class="kv">' + kv.map(function (p) { return '<div>' + p[0] + '</div><div>' + p[1] + '</div>'; }).join('') + '</div></div>' +
@@ -475,15 +475,16 @@ function actionForm(id, status) {
     if (need.length) extra = '<div class="o2calc" style="margin-top:8px">📦 This bag also needs: <b>' + need.map(esc).join(' + ') + '</b> — scan ' + (need.length > 1 ? 'each one' : 'it') + ' out separately and put ' + (need.length > 1 ? 'them' : 'it') + ' in the bag.</div>';
   }
   else if (i.type === 'First Responder Bag') extra = '<label>Used / needs restock (optional)</label><input id="f-used" placeholder="e.g. 2 NPA, gauze">';
-  else if (i.type === 'AED') extra = '<div class="checks"><label class="ck"><input type="checkbox" id="f-padsused"> Pads were used (replace)</label></div>';
-  else if (i.type === 'Oxygen Tank') extra = '<label>Tank is…</label><div class="checks"><label class="ck"><input type="radio" name="o2st" id="f-o2full" checked> ✅ Full — back at station, available</label><label class="ck"><input type="radio" name="o2st" id="f-o2empty"> 🪫 Empty — at station, unavailable until refilled</label></div>';
+  else if (i.type === 'AED') extra = '<label>AED is…</label><div class="checks"><label class="ck"><input type="radio" name="aedst" id="f-aedok" checked> 🔋 Charged — available</label><label class="ck"><input type="radio" name="aedst" id="f-aedcharge"> 🪫 Needs charge — needs attention</label></div>' +
+    '<div class="checks"><label class="ck"><input type="checkbox" id="f-padsused"> Pads were used (replace) — needs attention</label></div>';
+  else if (i.type === 'Oxygen Tank') extra = '<label>Tank is…</label><div class="checks"><label class="ck"><input type="radio" name="o2st" id="f-o2full" checked> ✅ Full — back at station, available</label><label class="ck"><input type="radio" name="o2st" id="f-o2empty"> 🪫 Empty — needs attention (refill)</label></div>';
 
   showModal('<h3>' + (out ? '↗ Sign OUT' : '✓ Sign IN') + ' — ' + esc(i.name) + '</h3><div class="hint">' + esc(i.id) + '</div>' +
     (isAdmin() ? '<label>' + (out ? 'Sign out to' : 'Returned by') + '</label><select id="f-for"><option value="' + esc(defFor) + '">' + esc(defName) + '</option></select>' +
       '<div class="hint" style="margin-top:4px">Admin: choose the member who ' + (out ? 'is taking' : 'used') + ' it. History shows them, entered by you.</div>'
       : '<div class="o2calc" style="margin-top:10px">👤 ' + (out ? 'Signing out to ' : 'Returned by ') + esc(S.member.name) + ' (#' + esc(S.member.id) + ')</div>') +
     extra +
-    (!out && i.type !== 'Oxygen Tank' ? '<label>Condition</label><select id="f-cond">' + CONDITIONS.map(function (c) { return '<option value="' + c + '"' + (c === i.condition ? ' selected' : '') + '>' + condLabel(c) + '</option>'; }).join('') + '</select>' : '') +
+    (!out && i.type === 'First Responder Bag' ? '<div class="checks" style="margin-top:8px"><label class="ck"><input type="checkbox" id="f-na"> ⚠ Needs attention (broken, needs restock, etc.) — explain in notes</label></div>' : '') +
     (out ? '<input id="f-notes" type="hidden" value="">' : '<label>Notes (optional)</label><textarea id="f-notes"></textarea>') +
     '<div class="row" style="margin-top:14px"><button class="btn ghost" onclick="openItem(\'' + esc(id) + '\')">Back</button><button class="btn ' + (out ? 'red' : 'green') + '" id="f-go" onclick="submitAction(\'' + esc(id) + '\',\'' + status + '\')">' + (out ? 'Sign OUT' : 'Sign IN') + '</button></div>');
   if ($('f-psi')) o2Hint(i.o2Size || '');
@@ -505,9 +506,11 @@ function submitAction(id, status) {
   if ($('f-psi') && $('f-psi').value !== '') b.psi = Number($('f-psi').value);
   if ($('f-seal') && $('f-seal').value.trim()) b.seal = $('f-seal').value.trim();
   if ($('f-used') && $('f-used').value.trim()) b.used = $('f-used').value.trim();
-  if ($('f-cond')) b.condition = $('f-cond').value;
+  if (status === 'IN') b.condition = 'OK';
+  if ($('f-na') && $('f-na').checked) { if (!b.notes) { toast('Add a note saying what needs attention'); $('f-notes').focus(); return; } b.condition = 'Out of Service'; }
   if ($('f-o2empty') && $('f-o2empty').checked) { b.condition = 'Out of Service'; b.notes = b.notes ? 'Empty — needs refill. ' + b.notes : 'Empty — needs refill'; }
-  if ($('f-padsused') && $('f-padsused').checked) { b.condition = 'Needs Attention'; b.notes = ('Pads used — replace. ' + b.notes).trim(); }
+  if ($('f-aedcharge') && $('f-aedcharge').checked) { b.condition = 'Out of Service'; b.notes = b.notes ? 'Needs charge. ' + b.notes : 'Needs charge'; }
+  if ($('f-padsused') && $('f-padsused').checked) { b.condition = 'Out of Service'; b.notes = ('Pads used — replace. ' + b.notes).trim(); }
   if (i.type === 'Oxygen Tank' && status === 'IN' && b.psi !== undefined && b.psi <= (S.cfg.EMPTY_PSI || 500) && b.condition === 'OK') b.condition = 'Needs Attention';
   // optimistic: update the screen right away, save in the background
   var before = JSON.parse(JSON.stringify(i)), out = status === 'OUT', cond = b.condition || i.condition || 'OK';
@@ -524,9 +527,11 @@ function submitAction(id, status) {
 // ════════ STATUS CHANGE ════════
 function statusForm(id, st) {
   var i = getItem(id), need = st !== 'Available';
-  var title = { 'Out of Service': '⛔ Mark unavailable (at station)', 'Not Available': '❓ Mark Not in Location', 'Available': i.condition === 'Needs Attention' && i.status === 'Available' ? '✓ Mark fixed / OK' : '✅ Mark Available' }[st];
-  var ph = { 'Out of Service': 'e.g. Battery needs replacing, regulator leaking', 'Not Available': 'e.g. Not on shelf, last seen on rig 45-10', 'Available': 'e.g. Battery replaced / found in supply room' }[st];
+  var title = { 'Out of Service': '⚠ Mark needs attention', 'Not Available': '❓ Mark Not in Location', 'Available': isNA(i) ? '✅ Fixed — mark available' : '✅ Mark Available' }[st];
+  var ph = { 'Out of Service': 'Tap a reason above or type one', 'Not Available': 'e.g. Not on shelf, last seen on rig 45-10', 'Available': 'e.g. Battery replaced / found in supply room' }[st];
   showModal('<h3>' + title + ' — ' + esc(i.name) + '</h3><div class="hint">' + esc(i.id) + '</div>' +
+    (st === 'Out of Service' ? '<label>What\'s wrong?</label><div class="chips" style="flex-wrap:wrap">' + ({ 'Oxygen Tank': ['🪫 Empty — needs refill', '💨 Leaking', '🔧 Broken / damaged'], 'AED': ['🔌 Needs charge', '🩹 Pads used / expired', '🔧 Broken / damaged'], 'First Responder Bag': ['📦 Needs restock', '🔧 Broken / damaged'] }[i.type] || ['🔧 Broken / damaged']).map(function (r) {
+      return '<button class="chip" onclick="$(\'f-notes\').value=\'' + r.replace(/^\S+\s/, '') + '\'">' + r + '</button>'; }).join('') + '</div>' : '') +
     '<label>' + (need ? 'Reason *' : 'Note (optional)') + '</label><textarea id="f-notes" placeholder="' + esc(ph) + '"></textarea>' +
     '<div class="row" style="margin-top:14px"><button class="btn ghost" onclick="openItem(\'' + esc(id) + '\')">Back</button><button class="btn ' + (need ? 'red' : 'green') + '" id="f-go" onclick="submitStatus(\'' + esc(id) + '\',\'' + st + '\')">Save</button></div>');
   setTimeout(function () { var n = $('f-notes'); if (n) n.focus(); }, 50);
@@ -620,8 +625,7 @@ function alertGroups() {
   var EXP = /expired|overdue/i, SOON = /exp\. in|due in/i;
   return [
     { key: 'exp', title: '🔴 Expired', hint: 'Pads, battery or hydro test past due', cls: 'bad', items: act.filter(function (i) { return has(i, EXP); }), why: function (i) { return why(i, EXP); } },
-    { key: 'oos', title: '⛔ Unavailable at station', hint: 'Empty, broken, etc. — can\'t be signed out', cls: 'bad', items: act.filter(function (i) { return i.status === 'Out of Service'; }), why: function (i) { return i.statusNote || 'Out of Service'; } },
-    { key: 'na', title: '⚠ Needs Attention', hint: 'Fix, then tap "Fixed — mark OK" before it can be signed out', cls: 'warn', items: act.filter(function (i) { return i.condition === 'Needs Attention' && i.status !== 'Out of Service'; }), why: function (i) { return i.statusNote || 'Needs attention'; } },
+    { key: 'na', title: '⚠ Needs attention', hint: 'At station — empty, broken, etc. Can\'t be signed out until fixed', cls: 'warn', items: act.filter(isNA), why: function (i) { return i.statusNote || 'Needs attention'; } },
     { key: 'soon', title: '🟠 Expiring soon', hint: 'Within ' + ((S.cfg && S.cfg.EXPIRY_WARN_DAYS) || 30) + ' days', cls: 'warn', items: act.filter(function (i) { return has(i, SOON); }), why: function (i) { return why(i, SOON); } },
     { key: 'miss', title: '❓ Not in location', hint: 'Missing / not where it should be', cls: 'bad', items: act.filter(function (i) { return i.status === 'Not Available'; }), why: function (i) { return i.statusNote || 'Not in location'; } }
   ];
@@ -746,7 +750,6 @@ function editItemForm(id) {
     (!id ? '<label>ID (leave blank to auto-number)</label><input id="e-id" placeholder="Auto: FRB-01 / O2-01 / AED-01" style="text-transform:uppercase">' : '') +
     '<input id="e-home" type="hidden" value="' + esc(i.homeLocation || HOME_LOCATION) + '">' +
     '<div id="e-typefields"></div>' +
-    (id ? '<label>Condition</label><select id="e-cond">' + CONDITIONS.map(function (c) { return '<option value="' + c + '"' + (c === i.condition ? ' selected' : '') + '>' + condLabel(c) + '</option>'; }).join('') + '</select>' : '') +
     '<label>Permanent notes (stay until edited)</label><textarea id="e-notes">' + esc(i.notes) + '</textarea>' +
     '<div class="row" style="margin-top:14px"><button class="btn ghost" onclick="' + (id ? 'openItem(\'' + esc(id) + '\')' : 'closeModal()') + '">Cancel</button><button class="btn" id="f-go" onclick="saveItem(' + (id ? '\'' + esc(id) + '\'' : '') + ')">' + (id ? 'Save' : 'Add + make QR') + '</button></div>' +
     (id ? '<button class="btn ghost" style="margin-top:10px;color:' + (i.active ? 'var(--bad)' : 'var(--ok)') + '" onclick="toggleActive(\'' + esc(id) + '\',' + !i.active + ')">' + (i.active ? '⏸ Deactivate item' : '▶ Activate item') + '</button>' : ''));
@@ -766,7 +769,7 @@ function typeFieldsFor(type, i) {
 function saveItem(id) {
   var type = id ? getItem(id).type : $('e-type').value;
   var b = { action: id ? 'updateItem' : 'addItem', type: type, name: $('e-name').value.trim(), homeLocation: $('e-home').value.trim(), notes: $('e-notes').value.trim() };
-  if (id) { b.id = id; b.condition = $('e-cond').value; } else if ($('e-id').value.trim()) b.id = $('e-id').value.trim().toUpperCase();
+  if (id) { b.id = id; } else if ($('e-id').value.trim()) b.id = $('e-id').value.trim().toUpperCase();
   if (!b.name) { toast('Name required'); return; }
   if ($('e-kind')) b.bagKind = $('e-kind').value;
   if (type === 'AED') { b.serial = $('e-serial').value.trim(); b.padsExp = $('e-pads').value; b.pedsPadsExp = $('e-peds').value; b.batteryExp = $('e-batt').value; }
