@@ -414,7 +414,7 @@ function itemHtml(i, log) {
       '</div>' : '') +
     '<div class="card" style="box-shadow:none;border:1px solid var(--border)"><div class="kv">' + kv.map(function (p) { return '<div>' + p[0] + '</div><div>' + p[1] + '</div>'; }).join('') + '</div></div>' +
     (isAdmin() ? '<button class="btn ' + (i.active ? 'ghost' : 'green') + '" style="margin-bottom:10px' + (i.active ? ';color:var(--text2)' : '') + '" onclick="toggleActive(\'' + esc(i.id) + '\',' + !i.active + ')">' + (i.active ? '⏸ Deactivate (hide from dashboard)' : '▶ Activate') + '</button>' : '') +
-    (isAdmin() ? '<div class="row" style="margin-bottom:12px"><button class="btn ghost" onclick="editItemForm(\'' + esc(i.id) + '\')">✏️ Edit</button><button class="btn ghost" onclick="printStickers([\'' + esc(i.id) + '\'])">🖨 QR Sticker</button></div>' : '') +
+    (isAdmin() ? '<div class="row" style="margin-bottom:12px"><button class="btn ghost" onclick="editItemForm(\'' + esc(i.id) + '\')">✏️ Edit</button><button class="btn ghost" onclick="stickerPicker([\'' + esc(i.id) + '\'])">🖨 QR Sticker</button></div>' : '') +
     '<h2 style="font-size:15px;margin:6px 0 8px">History</h2>' + hist;
 }
 function logRow(l) {
@@ -704,7 +704,7 @@ function saveItem(id) {
   busy(true);
   apiPost(b).then(function (d) {
     toast(id ? '✓ Saved' : '✓ Added ' + d.id);
-    return refresh().then(function () { if (id) openItem(id); else { closeModal(); printStickers([d.id]); } });
+    return refresh().then(function () { if (id) openItem(id); else { stickerPicker([d.id]); } });
   }).catch(function (e) { busy(false); toast('⚠ ' + e.message, 4000); });
 }
 function toggleActive(id, active) {
@@ -714,16 +714,46 @@ function toggleActive(id, active) {
 // ════════ QR STICKERS ════════
 function qrUrlFor(id) { return APP_URL + '?id=' + encodeURIComponent(id); }
 function qrImg(text) { var q = qrcode(0, 'M'); q.addData(text); q.make(); return q.createDataURL(6, 2); }
-function stickerPicker() {
-  var act = S.items.filter(function (i) { return i.active; });
-  showModal('<h3>🖨 QR stickers</h3><div class="hint">Prints one 1 × 3 in label per page. In the print window choose your label printer and paper size 3 × 1 in, scale 100%.</div>' +
+var SHEET_DEF = { pw: 8.5, ph: 11, cols: 7, rows: 3, w: 1, h: 3, left: 0.375, top: 0.75, gx: 0.125, gy: 0.25 };
+var SHEET_F = [['pw', 'Page width'], ['ph', 'Page height'], ['cols', 'Labels across'], ['rows', 'Labels down'], ['w', 'Label width'], ['h', 'Label height'], ['left', 'Left edge → 1st label'], ['top', 'Top edge → 1st label'], ['gx', 'Gap side-to-side'], ['gy', 'Gap top-to-bottom']];
+function sheetCfg() { var c = {}; try { c = JSON.parse(store('tvac_sheet') || '{}') || {}; } catch (e) {} var o = {}; for (var k in SHEET_DEF) { var v = c[k], zeroOk = ['left', 'top', 'gx', 'gy'].indexOf(k) >= 0; o[k] = typeof v === 'number' && isFinite(v) && (v > 0 || (zeroOk && v === 0)) ? v : SHEET_DEF[k]; } o.cols = Math.round(o.cols); o.rows = Math.round(o.rows); return o; }
+function sheetSave() { var o = {}; SHEET_F.forEach(function (f) { o[f[0]] = Number($('sh-' + f[0]).value); }); store('tvac_sheet', JSON.stringify(o)); stkMode(); }
+function sheetReset() { store('tvac_sheet', null); SHEET_F.forEach(function (f) { $('sh-' + f[0]).value = SHEET_DEF[f[0]]; }); stkMode(); }
+function stkMode() {
+  var sheet = $('stk-sheet').checked, c = sheetCfg(), n = c.cols * c.rows;
+  $('stk-sheetopts').classList.toggle('hidden', !sheet);
+  $('stk-hint').innerHTML = sheet ? 'Prints on a full ' + c.pw + ' × ' + c.ph + ' in sheet of ' + n + ' labels (' + c.w + ' × ' + c.h + ' in). Print at <b>100% / Actual size</b>. Try <b>Test fit</b> on plain paper first.'
+    : 'One 1 × 3 in label per page, for a label printer. Paper size 3 × 1 in, scale 100%.';
+  $('stk-start').max = n; if (Number($('stk-start').value) > n) $('stk-start').value = n;
+}
+function stickerPicker(pre) {
+  var act = S.items.filter(function (i) { return i.active; }), c = sheetCfg();
+  pre = pre || [];
+  var lp = store('tvac_stkfmt') === 'label';
+  showModal('<h3>🖨 QR stickers</h3>' +
+    '<div class="row" style="margin:6px 0"><label class="ck" style="flex:1"><input type="radio" name="stkfmt" id="stk-sheet" onchange="store(\'tvac_stkfmt\',\'sheet\');stkMode()"' + (lp ? '' : ' checked') + '> 📄 Sticker sheet</label>' +
+    '<label class="ck" style="flex:1"><input type="radio" name="stkfmt" id="stk-label" onchange="store(\'tvac_stkfmt\',\'label\');stkMode()"' + (lp ? ' checked' : '') + '> 🏷 Label printer</label></div>' +
+    '<div class="hint" id="stk-hint"></div>' +
+    '<div id="stk-sheetopts"><div class="row" style="align-items:flex-end;margin-top:8px"><div style="flex:1"><label>Start at label #</label><input id="stk-start" type="number" min="1" value="1" inputmode="numeric"></div>' +
+    '<button class="btn ghost" style="flex:1" onclick="stickerPdf([], {sheet:true, test:true})">📐 Test fit</button></div>' +
+    '<div class="hint" style="margin-top:4px">Label 1 is top-left, counting across. Use this to finish a partly used sheet.</div>' +
+    '<details style="margin-top:8px"><summary style="font-weight:700;cursor:pointer">⚙ Adjust sheet layout (inches)</summary><div style="display:grid;grid-template-columns:1fr 1fr;gap:6px 10px;margin-top:6px">' +
+    SHEET_F.map(function (f) { return '<div><label style="font-size:12px">' + f[1] + '</label><input id="sh-' + f[0] + '" type="number" step="0.01" inputmode="decimal" value="' + c[f[0]] + '" onchange="sheetSave()"></div>'; }).join('') +
+    '</div><button class="btn ghost sm" style="margin-top:8px" onclick="sheetReset()">Reset to default</button></details></div>' +
     '<div class="row" style="margin-top:10px"><button class="btn ghost sm" style="width:100%" onclick="stkAll(true)">☑ Select all</button><button class="btn ghost sm" style="width:100%" onclick="stkAll(false)">☐ Clear</button></div>' +
     '<div class="checks" style="margin:6px 0 10px">' + TYPES.map(function (t) {
       var l = act.filter(function (i) { return i.type === t; });
       return l.length ? '<div style="display:flex;align-items:center;justify-content:space-between;margin-top:12px"><b>' + TYPE_META[t].icon + ' ' + t + ' (' + l.length + ')</b><button class="btn ghost sm" onclick="stkAll(true,\'' + t + '\')">Select all</button></div>' +
-        l.map(function (i) { return '<label class="ck"><input type="checkbox" data-stk="' + esc(i.id) + '" data-type="' + esc(t) + '" onchange="stkCount()"> ' + esc(i.name) + ' <span class="hint">' + esc(i.id) + '</span></label>'; }).join('') : '';
+        l.map(function (i) { return '<label class="ck"><input type="checkbox" data-stk="' + esc(i.id) + '" data-type="' + esc(t) + '" onchange="stkCount()"' + (pre.indexOf(i.id) >= 0 ? ' checked' : '') + '> ' + esc(i.name) + ' <span class="hint">' + esc(i.id) + '</span></label>'; }).join('') : '';
     }).join('') + '</div>' +
-    '<div class="row" style="position:sticky;bottom:0;background:#fff;padding-top:8px"><button class="btn ghost" onclick="closeModal()">Cancel</button><button class="btn" id="stk-go" onclick="printStickers([].map.call(document.querySelectorAll(\'[data-stk]:checked\'),function(c){return c.dataset.stk}))">Print (0)</button></div>');
+    '<div class="row" style="position:sticky;bottom:0;background:#fff;padding-top:8px"><button class="btn ghost" onclick="closeModal()">Cancel</button><button class="btn" id="stk-go" onclick="stkGo()">Print (0)</button></div>');
+  stkMode(); stkCount();
+}
+function stkGo() {
+  var ids = [].map.call(document.querySelectorAll('[data-stk]:checked'), function (c) { return c.dataset.stk; });
+  if (!ids.length) { toast('Select at least one item'); return; }
+  if ($('stk-sheet').checked) stickerPdf(ids, { sheet: true, start: Math.max(1, Number($('stk-start').value) || 1) });
+  else printStickers(ids);
 }
 function stkAll(on, type) {
   document.querySelectorAll('[data-stk]').forEach(function (c) { if (!type || c.dataset.type === type) c.checked = on; });
@@ -762,23 +792,49 @@ function stickerCanvas(it, logo) {
   x.fillStyle = '#333'; x.font = (5.5 / 72 * D) + 'px Helvetica,Arial,sans-serif'; x.fillText('Scan to sign out · sign in', tx, y + .55 * D);
   return c;
 }
-function stickerPdf(ids) {
+function rotateCanvas(src) { // portrait label: turn the 3×1 design on its side (reads bottom-to-top)
+  var c = document.createElement('canvas'); c.width = src.height; c.height = src.width; var x = c.getContext('2d');
+  x.translate(0, c.height); x.rotate(-Math.PI / 2); x.drawImage(src, 0, 0); return c;
+}
+function stickerPdf(ids, o) {
+  o = o || {};
   showModal('<h3>🖨 QR stickers</h3><div class="spinner"></div><div class="hint" style="text-align:center">Making PDF…</div>');
   Promise.all([window.jspdf ? 0 : loadScript('https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js'), loadImg('logo.png')]).then(function (r) {
-    var logo = r[1], doc = new window.jspdf.jsPDF({ orientation: 'landscape', unit: 'in', format: [1, 3] });
-    ids.forEach(function (id, n) {
-      if (n) doc.addPage([1, 3], 'landscape');
-      doc.addImage(stickerCanvas(getItem(id) || { id: id, name: id }, logo).toDataURL('image/png'), 'PNG', 0, 0, 3, 1);
-    });
-    var name = 'TVAC-stickers' + (ids.length === 1 ? '-' + ids[0] : '') + '.pdf', blob = doc.output('blob');
+    var logo = r[1], doc, pages = 1, name;
+    var img = function (id) { var cv = stickerCanvas(getItem(id) || { id: id, name: id }, logo); return cv; };
+    if (o.sheet) {
+      var c = sheetCfg(), per = c.cols * c.rows, slot = (o.start || 1) - 1, portrait = c.h > c.w;
+      doc = new window.jspdf.jsPDF({ orientation: c.pw > c.ph ? 'landscape' : 'portrait', unit: 'in', format: [c.pw, c.ph] });
+      var pos = function (k) { var col = k % c.cols, row = Math.floor(k / c.cols); return [c.left + col * (c.w + c.gx), c.top + row * (c.h + c.gy)]; };
+      if (o.test) {
+        doc.setLineWidth(0.01); doc.setDrawColor(200, 16, 46); doc.setFontSize(9); doc.setTextColor(120);
+        for (var k = 0; k < per; k++) { var p = pos(k); doc.rect(p[0], p[1], c.w, c.h); doc.text(String(k + 1), p[0] + c.w / 2, p[1] + c.h / 2, { align: 'center' }); }
+        doc.setTextColor(0); doc.setFontSize(10); doc.text('TEST FIT — print at 100% on plain paper, hold it over a sticker sheet up to the light.', c.pw / 2, Math.max(0.3, c.top / 2), { align: 'center' });
+        name = 'TVAC-sheet-test.pdf';
+      } else {
+        ids.forEach(function (id) {
+          if (slot >= per) { doc.addPage([c.pw, c.ph], c.pw > c.ph ? 'landscape' : 'portrait'); slot = 0; pages++; }
+          var cv = img(id); if (portrait) cv = rotateCanvas(cv);
+          var p = pos(slot++); doc.addImage(cv.toDataURL('image/png'), 'PNG', p[0], p[1], c.w, c.h);
+        });
+        name = 'TVAC-sticker-sheet.pdf';
+      }
+    } else {
+      doc = new window.jspdf.jsPDF({ orientation: 'landscape', unit: 'in', format: [1, 3] });
+      ids.forEach(function (id, n) { if (n) doc.addPage([1, 3], 'landscape'); doc.addImage(img(id).toDataURL('image/png'), 'PNG', 0, 0, 3, 1); });
+      name = 'TVAC-stickers' + (ids.length === 1 ? '-' + ids[0] : '') + '.pdf';
+    }
+    var blob = doc.output('blob');
     var file = new File([blob], name, { type: 'application/pdf' }), url = URL.createObjectURL(blob);
     window._stkFile = file;
     var canShare = navigator.canShare && navigator.canShare({ files: [file] });
-    showModal('<h3>🖨 ' + ids.length + ' sticker' + (ids.length > 1 ? 's' : '') + ' ready</h3><div class="hint" style="margin-bottom:12px">' +
-      (canShare ? 'Tap <b>Share / Print</b>, then choose <b>Print</b> (or your label printer app). ' : '') + 'Paper size 3 × 1 in, scale 100%.</div>' +
+    var title = o.test ? '📐 Test sheet ready' : '🖨 ' + ids.length + ' sticker' + (ids.length > 1 ? 's' : '') + ' ready' + (o.sheet ? ' (' + pages + ' sheet' + (pages > 1 ? 's' : '') + ')' : '');
+    showModal('<h3>' + title + '</h3><div class="hint" style="margin-bottom:12px">' +
+      (canShare ? 'Tap <b>Share / Print</b>, then choose <b>Print</b>. ' : 'Open the PDF, then print it. ') +
+      (o.sheet ? 'Set scale to <b>100% / Actual size</b> (not "Fit to page").' : 'Paper size 3 × 1 in, scale 100%.') + '</div>' +
       (canShare ? '<button class="btn" style="margin-bottom:8px" onclick="navigator.share({files:[window._stkFile]}).catch(function(){})">📤 Share / Print</button>' : '') +
       '<a class="btn ' + (canShare ? 'ghost' : '') + '" style="display:block;text-align:center;text-decoration:none;margin-bottom:8px" href="' + url + '" download="' + name + '" target="_blank">📄 Open PDF</a>' +
-      '<button class="btn ghost" onclick="closeModal()">Done</button>');
+      '<button class="btn ghost" onclick="stickerPicker()">Back</button>');
   }).catch(function (e) { closeModal(); toast('⚠ ' + e.message, 5000); });
 }
 
