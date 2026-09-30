@@ -471,8 +471,12 @@ function actionForm(id, status) {
   var defFor = (!out && holderId(i)) || S.member.id, defName = (!out && holderId(i)) ? i.location : S.member.name + ' (#' + S.member.id + ') — me';
   var dl = '<datalist id="locs">' + locations().map(function (l) { return '<option value="' + esc(l) + '">'; }).join('') + '</datalist>';
   var extra = '';
-  if (out) extra = i.type === 'First Responder Bag' && kindChecks(i).some(function (c) { return /AED/i.test(c); })
-    ? '<div class="o2calc" style="margin-top:8px">⚡ This bag has an AED pocket — scan out an AED separately and put it in the bag.</div>' : '';
+  if (out) { if (i.type === 'First Responder Bag') {
+    var ck = kindChecks(i).join(' '), need = [];
+    if (/AED/i.test(ck)) need.push('⚡ an AED');
+    if (/O2 tank|oxygen tank/i.test(ck)) need.push('🫁 an O2 tank');
+    if (need.length) extra = '<div class="o2calc" style="margin-top:8px">This bag also needs ' + need.join(' and ') + ' — scan ' + (need.length > 1 ? 'each one' : 'it') + ' out separately and put ' + (need.length > 1 ? 'them' : 'it') + ' in the bag.</div>';
+  } }
   else if (i.type === 'First Responder Bag') extra = '<label>Used / needs restock (optional)</label><input id="f-used" placeholder="e.g. 2 NPA, gauze">';
   else if (i.type === 'AED') extra = '<div class="checks"><label class="ck"><input type="checkbox" id="f-padsused"> Pads were used (replace)</label></div>';
 
