@@ -181,6 +181,15 @@ function kinds() { return (S.cfg && S.cfg.bagKinds) || []; }
 function kindOf(i) { if (!i || !i.bagKind) return null; return kinds().filter(function (k) { return k.name === i.bagKind; })[0] || { name: i.bagKind, color: '', checklist: [] }; }
 function kindHex(k) { var c = String((k && k.color) || '').trim(); if (/^#/.test(c)) return c; for (var n in KIND_COLORS) if (n.toLowerCase() === c.toLowerCase()) return KIND_COLORS[n]; return '#9ca3af'; }
 function kindTag(i) { var k = kindOf(i); return k ? '<span class="kind"><span class="kd" style="background:' + kindHex(k) + '"></span>' + esc(k.name) + '</span>' : ''; }
+function bagSvg(hex) { // backpack icon in the bag's own color
+  var light = /^#(f|e)/i.test(hex) || /eab308/i.test(hex), cross = light ? '#b91c1c' : '#fff';
+  return '<svg viewBox="1.5 0.5 21 23" width="1.2em" height="1.3em" style="vertical-align:-0.3em;display:inline-block" aria-hidden="true">' +
+    '<path d="M9 5.5V4.5a3 3 0 0 1 6 0v1" fill="none" stroke="#374151" stroke-width="1.7"/>' +
+    '<rect x="3.5" y="5.5" width="17" height="17" rx="4.5" fill="' + hex + '" stroke="rgba(0,0,0,.4)" stroke-width="1"/>' +
+    '<rect x="6.5" y="13.5" width="11" height="6.5" rx="2" fill="rgba(255,255,255,.25)" stroke="rgba(0,0,0,.28)" stroke-width=".8"/>' +
+    '<path d="M12 7.6v4.2M9.9 9.7h4.2" stroke="' + cross + '" stroke-width="1.6" stroke-linecap="round"/></svg>';
+}
+function itemIcon(i) { var k = i && i.type === 'First Responder Bag' && kindOf(i); return k ? bagSvg(kindHex(k)) : TYPE_META[i.type].icon; }
 function kindChecks(i) { var k = kindOf(i); return k && k.checklist && k.checklist.length ? k.checklist : TYPE_META[i.type].checks; }
 var TYPES = Object.keys(TYPE_META);
 var O2_FACTORS = { 'D': 0.16, 'Jumbo D': 0.2, 'E': 0.28, 'M': 1.56, 'G': 2.41, 'H/K': 3.14 };
@@ -319,7 +328,7 @@ function renderHome() {
     .sort(function (a, b) { return (worst(b.flags) === 'bad') - (worst(a.flags) === 'bad'); });
   var alerts = flagged.length ? '<div class="card"><h2>⚠ Needs attention (' + flagged.length + ')</h2>' +
     flagged.slice(0, 6).map(function (i) {
-      return '<div class="flag ' + worst(i.flags) + '" style="cursor:pointer" onclick="openItem(\'' + esc(i.id) + '\')"><span>' + TYPE_META[i.type].icon + '</span><span><b>' + esc(i.name) + '</b> — ' + i.flags.map(function (f) { return esc(f.text); }).join(' · ') + '</span></div>';
+      return '<div class="flag ' + worst(i.flags) + '" style="cursor:pointer" onclick="openItem(\'' + esc(i.id) + '\')"><span>' + itemIcon(i) + '</span><span><b>' + esc(i.name) + '</b> — ' + i.flags.map(function (f) { return esc(f.text); }).join(' · ') + '</span></div>';
     }).join('') + '<div class="hint" style="cursor:pointer;font-weight:700;color:var(--navy);margin-top:4px" onclick="go(\'alerts\')">' + (flagged.length > 6 ? '+ ' + (flagged.length - 6) + ' more — ' : '') + 'View all alerts →</div>' + '</div>' : '';
 
   var chips = ['All', 'Mine'].concat(STATUSES, ['Flagged'], TYPES).map(function (c) {
@@ -327,7 +336,7 @@ function renderHome() {
     return '<button class="chip' + (S.filter === c ? ' on' : '') + '" onclick="setFilter(\'' + c + '\')">' + lbl + '</button>';
   }).join('') + kinds().map(function (k, n) {
     var cnt = active.filter(function (i) { return i.bagKind === k.name; }), av = cnt.filter(function (i) { return i.status === 'Available'; }).length;
-    return cnt.length ? '<button class="chip' + (S.filter === 'kind:' + n ? ' on' : '') + '" onclick="setFilter(\'kind:' + n + '\')"><span class="kd" style="background:' + kindHex(k) + ';margin-right:4px;vertical-align:-1px"></span>' + esc(k.name) + ' <span style="opacity:.7">' + av + '/' + cnt.length + '</span></button>' : '';
+    return cnt.length ? '<button class="chip' + (S.filter === 'kind:' + n ? ' on' : '') + '" onclick="setFilter(\'kind:' + n + '\')"><span style="margin-right:3px">' + bagSvg(kindHex(k)) + '</span>' + esc(k.name) + ' <span style="opacity:.7">' + av + '/' + cnt.length + '</span></button>' : '';
   }).join('');
 
   $('view').innerHTML =
@@ -374,7 +383,7 @@ function renderList() {
 function itemRow(i) {
   var w = worst(i.flags);
   var extra = '';
-  return '<div class="item' + (i.status === 'Out of Service' ? ' oos' : '') + '" onclick="openItem(\'' + esc(i.id) + '\')"><div class="ic">' + TYPE_META[i.type].icon + '</div>' +
+  return '<div class="item' + (i.status === 'Out of Service' ? ' oos' : '') + '" onclick="openItem(\'' + esc(i.id) + '\')"><div class="ic">' + itemIcon(i) + '</div>' +
     '<div class="mid"><div class="nm">' + esc(i.name) + kindTag(i) + ' ' + (w ? '<span class="dot ' + w + '" style="display:inline-block"></span>' : '') + '</div>' +
     '<div class="sub">' + esc(i.id) + ' · ' + esc(whereText(i)) + extra + '</div></div>' +
     (i.condition === 'Needs Attention' && i.status !== 'Out of Service' ? '<span class="badge b-warn" style="margin-right:4px">⚠ Attention</span>' : '') + statusBadge(i) + '</div>';
@@ -412,7 +421,7 @@ function itemHtml(i, log) {
   var hist = log === 'loading' ? '<div class="hint">Loading history…</div>' : log ? (log.length ? log.map(logRow).join('') : '<div class="hint">No history yet</div>') : '<div class="hint">History unavailable right now</div>';
   var inactive = !i.active ? '<div class="oos-banner na-banner"><div class="big">⏸ INACTIVE</div><div class="why">This sticker is not in use' + (isAdmin() ? ' — tap Activate below to turn it back on' : '') + '</div></div>' : '';
 
-  return '<div style="display:flex;align-items:center;gap:10px;margin-bottom:8px"><span style="font-size:30px">' + m.icon + '</span>' +
+  return '<div style="display:flex;align-items:center;gap:10px;margin-bottom:8px"><span style="font-size:30px;line-height:1">' + itemIcon(i) + '</span>' +
     '<div style="flex:1"><h3>' + esc(i.name) + '</h3><div class="hint" style="margin:0">' + esc(i.type) + kindTag(i) + '</div></div>' +
     '<button class="btn ghost sm" onclick="closeModal()">✕</button></div>' + inactive + banner + flags +
     (i.active ? '<div class="row" style="margin:12px 0">' +
@@ -624,7 +633,7 @@ function kindsCard() {
   return '<div class="card"><h2>🎒 FR bag kinds</h2><div class="hint" style="margin-bottom:8px">Bag colors / purposes (e.g. Blue = Medication). Each kind can have its own inspection checklist. Also editable in the "Bag Kinds" sheet tab.</div>' +
     (ks.length ? ks.map(function (k, n) {
       var cnt = S.items.filter(function (i) { return i.bagKind === k.name; }).length;
-      return '<div class="item" onclick="kindForm(' + n + ')"><div class="ic"><span class="kd" style="width:22px;height:22px;background:' + kindHex(k) + '"></span></div><div class="mid"><div class="nm">' + esc(k.name) + '</div><div class="sub">' + esc(k.color || 'No color') + ' · ' + cnt + ' bag' + (cnt === 1 ? '' : 's') + ' · ' + (k.checklist.length ? k.checklist.length + '-item checklist' : 'standard checklist') + '</div></div><span class="hint">Edit ›</span></div>';
+      return '<div class="item" onclick="kindForm(' + n + ')"><div class="ic">' + bagSvg(kindHex(k)) + '</div><div class="mid"><div class="nm">' + esc(k.name) + '</div><div class="sub">' + esc(k.color || 'No color') + ' · ' + cnt + ' bag' + (cnt === 1 ? '' : 's') + ' · ' + (k.checklist.length ? k.checklist.length + '-item checklist' : 'standard checklist') + '</div></div><span class="hint">Edit ›</span></div>';
     }).join('') : '<div class="hint">No kinds yet.</div>') +
     '<button class="btn ghost" style="margin-top:10px" onclick="kindForm(-1)">Add bag kind</button></div>';
 }
@@ -666,7 +675,7 @@ function renderAlerts() {
     groups.filter(function (g) { return g.items.length; }).map(function (g) {
       return '<div class="card al-sec"><h2>' + g.title + ' <span class="badge b-' + g.cls + '">' + g.items.length + '</span></h2><div class="hint" style="margin:-6px 0 6px">' + esc(g.hint) + '</div>' +
         g.items.map(function (i) {
-          return '<div class="item" onclick="openItem(\'' + esc(i.id) + '\')"><div class="ic">' + TYPE_META[i.type].icon + '</div><div class="mid"><div class="nm">' + esc(i.name) + ' <span class="hint">' + esc(i.id) + '</span></div>' +
+          return '<div class="item" onclick="openItem(\'' + esc(i.id) + '\')"><div class="ic">' + itemIcon(i) + '</div><div class="mid"><div class="nm">' + esc(i.name) + ' <span class="hint">' + esc(i.id) + '</span></div>' +
             '<div class="why" style="color:var(--' + g.cls + ')">' + esc(g.why(i)) + '</div><div class="sub">' + esc(whereText(i)) + '</div></div>' + statusBadge(i) + '</div>';
         }).join('') + '</div>';
     }).join('') + notifCard();
