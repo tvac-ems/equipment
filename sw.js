@@ -1,5 +1,5 @@
 // TVAC Equipment — service worker (app-shell cache; API calls always go to network)
-var CACHE = 'tvac-v2';
+var CACHE = 'tvac-v3';
 var SHELL = ['./', 'index.html', 'manifest.json', 'logo.png', 'icon-192.png', 'icon-512.png'];
 self.addEventListener('install', function (e) { e.waitUntil(caches.open(CACHE).then(function (c) { return c.addAll(SHELL); })); self.skipWaiting(); });
 self.addEventListener('activate', function (e) {
@@ -8,7 +8,15 @@ self.addEventListener('activate', function (e) {
 });
 self.addEventListener('fetch', function (e) {
   var u = new URL(e.request.url);
-  if (e.request.method !== 'GET' || u.origin !== location.origin) return;
+  if (e.request.method !== 'GET') return;
+  // scanner / sticker libraries from the CDN: keep a copy so scanning works with no signal
+  if (/cdn\.jsdelivr\.net|cdnjs\.cloudflare\.com/.test(u.host)) {
+    e.respondWith(caches.match(e.request).then(function (hit) {
+      return hit || fetch(e.request).then(function (r) { var copy = r.clone(); caches.open(CACHE).then(function (c) { c.put(e.request, copy); }); return r; });
+    }));
+    return;
+  }
+  if (u.origin !== location.origin) return;
   // network-first so updates show immediately; fall back to cache offline
   e.respondWith(fetch(e.request).then(function (r) {
     var copy = r.clone(); caches.open(CACHE).then(function (c) { c.put(e.request, copy); }); return r;
