@@ -104,7 +104,8 @@ details.sec[open]>summary{margin-bottom:10px}
 #scanner{position:fixed;inset:0;background:#000;z-index:150;display:flex;flex-direction:column}
 #scanner video{flex:1;width:100%;object-fit:cover}
 #scanner .frame{position:absolute;top:50%;left:50%;width:240px;height:240px;transform:translate(-50%,-60%);border:3px solid #fff;border-radius:18px;box-shadow:0 0 0 9999px rgba(0,0,0,.35)}
-#scanner .bar{padding:16px 16px calc(16px + env(safe-area-inset-bottom));background:#000}
+#scanner .bar{padding:16px 16px calc(16px + env(safe-area-inset-bottom));background:#000;width:100%;max-width:520px;margin:0 auto}
+#scanner .bar input{font-size:20px;font-weight:700;letter-spacing:1px}
 .spinner{width:28px;height:28px;border:3px solid #ddd;border-top-color:var(--navy);border-radius:50%;animation:sp 0.8s linear infinite;margin:30px auto}
 @keyframes sp{to{transform:rotate(360deg)}}
 .o2calc{background:#eef4fb;color:var(--blue);border-radius:10px;padding:8px 10px;font-size:13px;font-weight:600;margin-top:6px}
@@ -157,7 +158,7 @@ details.sec[open]>summary{margin-bottom:10px}
   <main id="view"></main>
   <nav class="tabs">
     <button data-tab="home" onclick="go('home')"><span class="i">🏠</span>Home</button>
-    <button onclick="openScanner()"><span class="i">📷</span>Scan</button>
+    <button onclick="openScanner()"><span class="i">📷</span>Scan / ID</button>
     <button data-tab="alerts" onclick="go('alerts')" style="position:relative"><span class="i">⚠️</span>Alerts<span id="alert-count" class="tab-count hidden"></span></button>
     <button data-tab="activity" onclick="go('activity')"><span class="i">🕘</span>Activity</button>
     <button data-tab="admin" id="tab-admin" onclick="go('admin')"><span class="i">⚙️</span>Admin</button>
@@ -172,7 +173,7 @@ details.sec[open]>summary{margin-bottom:10px}
 <script>
 // ════════ CONFIG ════════
 // Paste the Apps Script web-app /exec URL here (update when redeploying under the TVAC account).
-var APP_VERSION = '2026-10-01.1'; // bump on every release — open apps reload themselves when this changes
+var APP_VERSION = '2026-10-01.2'; // bump on every release — open apps reload themselves when this changes
 var API_URL = 'https://script.google.com/macros/s/AKfycbxEZyMAzgTEBhZhQ7bpifXX3P3sojxhjsn69vTFJPMBI4rsmAjxpTInBUMIAe7WB02W/exec';
 // URL encoded into QR stickers (this page). Auto-detected; override if hosting elsewhere.
 // Single home base for all equipment (items return here on Check IN).
@@ -430,7 +431,7 @@ function renderHome() {
   }).join('');
 
   $('view').innerHTML =
-    '<button class="scan-btn" onclick="openScanner()"><span class="big">📷</span><span>Scan QR code<br><span style="font-size:13px;font-weight:500;opacity:.9">Sign out or sign in</span></span></button>' +
+    '<button class="scan-btn" onclick="openScanner()"><span class="big">📷</span><span>Scan QR / Enter ID<br><span style="font-size:13px;font-weight:500;opacity:.9">Sign out or sign in</span></span></button>' +
     glanceHtml(active) + '<div class="tiles">' + tiles + '</div>' + alerts +
     '<div class="card"><input id="q" placeholder="🔍  Search name, ID, location…" value="' + esc(S.q) + '" oninput="S.q=this.value;renderList()" style="margin-bottom:10px">' +
     '<div class="chips">' + chips + '</div><div id="list"></div></div>';
@@ -1120,18 +1121,20 @@ function stickerPdf(ids, o) {
 var _stream = null, _raf = null, _cam = null, _camOff = null; // _cam = kept-alive camera so the phone doesn't ask again each scan
 function openScanner() {
   var el = document.createElement('div'); el.id = 'scanner';
-  el.innerHTML = '<video playsinline muted></video><div class="frame"></div><div class="bar"><div style="color:#fff;text-align:center;margin-bottom:10px;font-weight:600">Point at an equipment QR sticker</div>' +
-    '<div class="row"><input id="manual-id" placeholder="Or type ID (e.g. 1001)" inputmode="numeric" style="text-transform:uppercase"><button class="btn sm" onclick="scanned($(\'manual-id\').value)">Go</button></div>' +
+  el.innerHTML = '<video playsinline muted></video><div class="frame"></div><div class="bar"><div style="color:#fff;text-align:center;margin-bottom:10px;font-weight:600">Scan the QR sticker — or enter the ID number</div>' +
+    '<form class="row" onsubmit="event.preventDefault();scanned($(\'manual-id\').value)"><input id="manual-id" placeholder="ID # (e.g. 1001)" inputmode="numeric" autocomplete="off" enterkeyhint="go" style="flex:2;text-transform:uppercase"><button class="btn" type="submit" style="flex:1">Go</button></form>' +
     '<button class="btn ghost" style="margin-top:10px" onclick="closeScanner()">Cancel</button></div>';
   document.body.appendChild(el);
   var video = el.querySelector('video');
-  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) { toast('Camera not available — type the ID'); return; }
+  var noTouch = !('ontouchstart' in window) && !(navigator.maxTouchPoints > 0);
+  if (noTouch) setTimeout(function () { var m = $('manual-id'); if (m) m.focus(); }, 50); // computer: type the ID straight away
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) { $('manual-id').focus(); return; }
   clearTimeout(_camOff);
   var live = _cam && _cam.getVideoTracks().some(function (t) { return t.readyState === 'live'; });
   (live ? Promise.resolve(_cam) : navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } })).then(function (s) {
     _cam = s; s.getTracks().forEach(function (t) { t.enabled = true; });
     _stream = s; video.srcObject = s; video.play(); tick(video);
-  }).catch(function () { toast('Camera blocked — type the ID or use your phone camera app'); });
+  }).catch(function () { var f = el.querySelector('.frame'); if (f) f.remove(); var v = el.querySelector('video'); if (v) v.style.display = 'none'; el.style.justifyContent = 'center'; var m = $('manual-id'); if (m) m.focus(); });
 }
 function tick(video) {
   var c = document.createElement('canvas'), ctx = c.getContext('2d', { willReadFrequently: true });
@@ -1159,7 +1162,10 @@ function scanned(text) {
   try { var u = new URL(text); id = u.searchParams.get('id') || text; } catch (e) {}
   closeScanner();
   if (navigator.vibrate) navigator.vibrate(60);
-  if (!getItem(id) && !isSpare(id)) { toast('Unknown item: ' + id); return; }
+  id = String(id).trim().toUpperCase();
+  var hit = S.items.filter(function (i) { return i.id.toUpperCase() === id || String(i.oldId || '').toUpperCase() === id; })[0];
+  if (hit) id = hit.id;
+  if (!hit && !isSpare(id)) { toast('No item with ID ' + id + ' — check the number', 4000); return; }
   openScanned(id); // opened by scanning / typing the ID → members may sign it in or out
 }
 
