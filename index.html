@@ -173,7 +173,7 @@ details.sec[open]>summary{margin-bottom:10px}
 <script>
 // ════════ CONFIG ════════
 // Paste the Apps Script web-app /exec URL here (update when redeploying under the TVAC account).
-var APP_VERSION = '2026-10-01.5'; // bump on every release — open apps reload themselves when this changes
+var APP_VERSION = '2026-10-01.8'; // bump on every release — open apps reload themselves when this changes
 var API_URL = 'https://script.google.com/macros/s/AKfycbxEZyMAzgTEBhZhQ7bpifXX3P3sojxhjsn69vTFJPMBI4rsmAjxpTInBUMIAe7WB02W/exec';
 // URL encoded into QR stickers (this page). Auto-detected; override if hosting elsewhere.
 // Single home base for all equipment (items return here on Check IN).
@@ -199,9 +199,12 @@ function bagSvg(hex) { // backpack icon in the bag's own color
     '<rect x="6.5" y="13.5" width="11" height="6.5" rx="2" fill="rgba(255,255,255,.25)" stroke="rgba(0,0,0,.28)" stroke-width=".8"/>' +
     '<path d="M12 7.6v4.2M9.9 9.7h4.2" stroke="' + cross + '" stroke-width="1.6" stroke-linecap="round"/></svg>';
 }
-function itemIcon(i) { var k = i && i.type === 'First Responder Bag' && kindOf(i); return k ? bagSvg(kindHex(k)) : TYPE_META[i.type].icon; }
-function kindChecks(i) { var k = kindOf(i); return k && k.checklist && k.checklist.length ? k.checklist : TYPE_META[i.type].checks; }
-var TYPES = Object.keys(TYPE_META);
+function itemIcon(i) { var k = i && i.type === 'First Responder Bag' && kindOf(i); return k ? bagSvg(kindHex(k)) : tm(i.type).icon; }
+function kindChecks(i) { var k = kindOf(i); return k && k.checklist && k.checklist.length ? k.checklist : tm(i.type).checks; }
+var TYPES = Object.keys(TYPE_META); // built-in types
+/** Built-in types + any custom ones admins typed in ("Other"). */
+function types() { var x = TYPES.slice(); (S.items || []).forEach(function (i) { if (i.type && x.indexOf(i.type) < 0) x.push(i.type); }); return x; }
+function tm(t) { return TYPE_META[t] || { icon: '📦', short: t, checks: ['Present & undamaged', 'Clean & ready'] }; }
 var O2_FACTORS = { 'D': 0.16, 'Jumbo D': 0.2, 'E': 0.28, 'M': 1.56, 'G': 2.41, 'H/K': 3.14 };
 var CONDITIONS = ['OK', 'Needs Attention', 'Out of Service'];
 function condLabel(c) { return c === 'Out of Service' ? 'Unavailable (at station)' : c; }
@@ -405,12 +408,12 @@ function render() {
 // ════════ HOME ════════
 function renderHome() {
   var active = S.items.filter(function (i) { return i.active; });
-  var tiles = TYPES.map(function (t) {
+  var tiles = types().map(function (t) {
     var list = active.filter(function (i) { return i.type === t; });
     var cnt = function (st) { return list.filter(function (i) { return i.status === st; }).length; };
     var av = cnt('Available'), asg = cnt('Assigned'), oos = cnt('Out of Service') + cnt('Not Available');
     return '<div class="tile' + (S.filter === t ? ' active' : '') + '" onclick="setFilter(\'' + t + '\')">' +
-      '<div class="ic">' + TYPE_META[t].icon + '</div><div class="n">' + list.length + '</div><div class="l">' + TYPE_META[t].short + '</div>' +
+      '<div class="ic">' + tm(t).icon + '</div><div class="n">' + list.length + '</div><div class="l">' + esc(tm(t).short) + '</div>' +
       '<div class="sub"><span style="color:var(--ok)">' + av + ' avail</span>' + (asg ? ' · <span style="color:var(--navy)">' + asg + ' asg</span>' : '') +
       (oos ? ' · <span style="color:var(--warn)">' + oos + ' ⚠</span>' : '') + '</div></div>';
   }).join('');
@@ -422,8 +425,8 @@ function renderHome() {
       return '<div class="flag ' + worst(i.flags) + '" style="cursor:pointer" onclick="openItem(\'' + esc(i.id) + '\')"><span>' + itemIcon(i) + '</span><span><b>' + esc(i.name) + '</b> — ' + i.flags.map(function (f) { return esc(flagText(f.text)); }).join(' · ') + '</span></div>';
     }).join('') + '<div class="hint" style="cursor:pointer;font-weight:700;color:var(--navy);margin-top:4px" onclick="go(\'alerts\')">' + (flagged.length > 6 ? '+ ' + (flagged.length - 6) + ' more — ' : '') + 'View all alerts →</div>' + '</div>' : '';
 
-  var chips = ['All', 'Mine'].concat(STATUSES.filter(function (x) { return x !== 'Not Available'; }), ['Flagged'], TYPES).map(function (c) {
-    var lbl = TYPE_META[c] ? TYPE_META[c].short : c === 'Mine' ? 'My items' : STATUS_META[c] ? STATUS_META[c].short : c;
+  var chips = ['All', 'Mine'].concat(STATUSES.filter(function (x) { return x !== 'Not Available'; }), ['Flagged'], types()).map(function (c) {
+    var lbl = types().indexOf(c) >= 0 ? tm(c).short : c === 'Mine' ? 'My items' : STATUS_META[c] ? STATUS_META[c].short : c;
     return '<button class="chip' + (S.filter === c ? ' on' : '') + '" onclick="setFilter(\'' + c + '\')">' + lbl + '</button>';
   }).join('') + kinds().map(function (k, n) {
     var cnt = active.filter(function (i) { return i.bagKind === k.name; }), av = cnt.filter(function (i) { return i.status === 'Available'; }).length;
@@ -469,7 +472,7 @@ function renderList() {
     if (STATUS_META[S.filter] && (S.filter === 'Out of Service' ? !(isNA(i) || i.status === 'Not Available') : S.filter === 'On Vehicle' ? !onVeh(i) : effStatus(i) !== S.filter)) return false;
     if (S.filter === 'Mine' && !(i.status === 'Assigned' && String(i.lastMember) === String(S.member.id))) return false;
     if (S.filter === 'Flagged' && !i.flags.length) return false;
-    if (TYPE_META[S.filter] && i.type !== S.filter) return false;
+    if (types().indexOf(S.filter) >= 0 && i.type !== S.filter) return false;
     if (/^kind:/.test(S.filter)) { var fk = kinds()[Number(S.filter.slice(5))]; if (!fk || i.bagKind !== fk.name) return false; }
     if (q && (i.name + ' ' + i.id + ' ' + (i.bagKind || '') + ' ' + i.location + ' ' + i.homeLocation + ' ' + i.serial).toLowerCase().indexOf(q) < 0) return false;
     return true;
@@ -510,7 +513,7 @@ function openItem(id) {
 }
 function histHtml(log) { return log === 'loading' ? '<div class="hint">Loading history…</div>' : log ? (log.length ? log.map(logRow).join('') : '<div class="hint">No history yet</div>') : '<div class="hint">History unavailable right now</div>'; }
 function itemHtml(i, log) {
-  var m = TYPE_META[i.type], out = i.status === 'Assigned', onv = i.status === 'On Vehicle';
+  var m = tm(i.type), out = i.status === 'Assigned', onv = i.status === 'On Vehicle';
   var kv = [['ID', esc(i.id) + (i.oldId ? ' <span class="hint">(was ' + esc(i.oldId) + ')</span>' : '')], ['Status', statusBadge(i)],
     [out ? 'Assigned to' : onv ? 'Vehicle' : 'Location', esc(out ? i.location : onv ? '🚑 ' + i.location : i.status === 'Not Available' ? 'Not in location' : (i.location || i.homeLocation || '—'))]].concat((out || onv) && i.lastUpdated ? [[out ? 'Out since' : 'On since', fmtTs(i.lastUpdated) + ' <span class="hint">(' + ago(i.lastUpdated) + ')</span>']] : []).concat([['Home', esc(i.homeLocation || '—')]]);
   if (i.type === 'First Responder Bag') kv.push(['Bag kind', kindTag(i) || '<span class="hint">Not set</span>']);
@@ -713,7 +716,7 @@ function submitStatus(id, st) {
 
 // ════════ INSPECTION ════════
 function inspectForm(id) {
-  var i = getItem(id), m = TYPE_META[i.type];
+  var i = getItem(id), m = tm(i.type);
   var fields = '';
   if (i.type === 'First Responder Bag') fields = '<label>Items used / restocked</label><input id="f-used" placeholder="Optional">';
   if (i.type === 'AED') fields = '<div class="row"><div><label>Adult pads exp.</label><input id="f-pads" type="date" value="' + esc(i.padsExp) + '"></div><div><label>Peds pads exp.</label><input id="f-peds" type="date" value="' + esc(i.pedsPadsExp) + '"></div></div>' +
@@ -867,26 +870,30 @@ function sect(key, title, meta, body) {
 function searchBox(cls) { return '<input placeholder="Search name or ID" style="margin-bottom:6px" oninput="var q=this.value.toLowerCase();document.querySelectorAll(\'.' + cls + '\').forEach(function(r){r.style.display=r.dataset.q.indexOf(q)<0?\'none\':\'flex\'})">'; }
 function byId(a, b) { return String(a.id).localeCompare(String(b.id), undefined, { numeric: true }); }
 function activeBody(items) {
-  var rows = items.slice().sort(function (a, b) { return (a.active - b.active) || byId(a, b); }).map(function (i) {
-    return '<label class="act-row" data-q="' + esc((i.id + ' ' + i.name).toLowerCase()) + '" style="display:flex;align-items:center;gap:8px;padding:6px 2px;border-bottom:1px solid var(--border)"><input type="checkbox" style="width:20px;height:20px;margin:0;flex:none"' + (i.active ? ' checked' : '') + ' onchange="toggleActive(\'' + esc(i.id) + '\',this.checked)"><span>' + itemIcon(i) + '</span><span style="flex:1;min-width:0"><b>' + esc(i.name) + '</b> <span class="hint">' + esc(i.id) + '</span></span>' + (i.active ? '' : '<span class="badge b-warn">Inactive</span>') + '</label>';
+  var off = (S.cfg && S.cfg.sparesOff) || [];
+  var all = items.concat(spares().map(function (id) { return { id: id, name: 'Blank sticker', type: 'Spare', active: off.indexOf(id) < 0, spare: true }; }));
+  var rows = all.sort(function (a, b) { return (a.active - b.active) || byId(a, b); }).map(function (i) {
+    return '<label class="act-row" data-q="' + esc((i.id + ' ' + i.name).toLowerCase()) + '" style="display:flex;align-items:center;gap:8px;padding:6px 2px;border-bottom:1px solid var(--border)"><input type="checkbox" style="width:20px;height:20px;margin:0;flex:none"' + (i.active ? ' checked' : '') + ' onchange="toggleActive(\'' + esc(i.id) + '\',this.checked)"><span>' + (i.spare ? '🏷' : itemIcon(i)) + '</span><span style="flex:1;min-width:0"><b>' + esc(i.name) + '</b> <span class="hint">' + esc(i.id) + '</span></span>' + (i.active ? '' : '<span class="badge b-warn">Inactive</span>') + '</label>';
   }).join('');
   return '<div class="hint" style="margin-bottom:6px">Uncheck to hide an item from the dashboard (its sticker shows "not in use"). Same as the Active column in the sheet.</div>' + searchBox('act-row') + rows;
 }
 function editBody(items) {
   var rows = items.slice().sort(byId).map(function (i) {
     return '<div class="edit-row" data-q="' + esc((i.id + ' ' + i.name).toLowerCase()) + '" onclick="editItemForm(\'' + esc(i.id) + '\')" style="display:flex;align-items:center;gap:8px;padding:9px 2px;border-bottom:1px solid var(--border);cursor:pointer"><span>' + itemIcon(i) + '</span><span style="flex:1;min-width:0"><b>' + esc(i.name) + '</b> <span class="hint">' + esc(i.id) + '</span></span><span class="hint">Edit ›</span></div>';
+  }).join('') + spares().slice().sort(function (a, b) { return a - b; }).map(function (id) {
+    return '<div class="edit-row" data-q="' + esc((id + ' blank spare sticker').toLowerCase()) + '" onclick="editItemForm(null,\'' + esc(id) + '\')" style="display:flex;align-items:center;gap:8px;padding:9px 2px;border-bottom:1px solid var(--border);cursor:pointer"><span>🏷</span><span style="flex:1;min-width:0"><b>Blank sticker</b> <span class="hint">' + esc(id) + '</span></span><span class="hint">Set up ›</span></div>';
   }).join('');
-  return '<div class="hint" style="margin-bottom:6px">Tap an item to change its name, bag kind, AED dates or notes, or print its sticker.</div>' + searchBox('edit-row') + rows;
+  return '<div class="hint" style="margin-bottom:6px">Tap an item to change its type, name, bag kind, AED dates or notes, or print its sticker. Blank stickers are at the bottom — tap one to set it up.</div>' + searchBox('edit-row') + rows;
 }
 // ════════ ADMIN ════════
 function renderAdmin() {
   if (!isAdmin()) { go('home'); return; }
-  var offCount = S.items.filter(function (i) { return !i.active; }).length;
+  var offCount = S.items.filter(function (i) { return !i.active; }).length + ((S.cfg && S.cfg.sparesOff) || []).length, stkTotal = S.items.length + spares().length;
   $('view').innerHTML =
     sect('add', '➕ Add item', spares().length ? spares().length + ' blank stickers left' : '', (spares().length ? '<div class="hint" style="margin-bottom:8px">' + spares().length + ' blank pre-printed stickers left. Scan one to set it up, or Add item uses the next one.</div>' : '') + '<button class="btn" onclick="editItemForm()">Add item</button>') +
     sect('stk', '🖨 QR stickers', S.items.length + ' items', '<div class="hint" style="margin-bottom:8px">Print or download QR stickers for any items, including blank spares for new equipment.</div><button class="btn" onclick="stickerPicker()">🖨 QR stickers</button>') +
-    sect('edit', '✏️ Edit items', S.items.length + ' items', editBody(S.items)) +
-    sect('active', '✅ Active stickers', (S.items.length - offCount) + ' active' + (offCount ? ' · ' + offCount + ' inactive' : ''), activeBody(S.items)) +
+    sect('edit', '✏️ Edit items', S.items.length + ' items' + (spares().length ? ' · ' + spares().length + ' blank' : ''), editBody(S.items)) +
+    sect('active', '✅ Active stickers', (stkTotal - offCount) + ' of ' + stkTotal + ' active' + (offCount ? ' · ' + offCount + ' inactive' : ''), activeBody(S.items)) +
     sect('kinds', '🎒 FR bag kinds', kinds().length + ' kinds', kindsCard()) +
     sect('veh', '🚑 Vehicles', vehicles().length + ' vehicles', vehiclesBody()) +
     sect('mem', '👥 Members', '', '<div id="mem"><div class="spinner"></div></div><button class="btn ghost" style="margin-top:10px" onclick="memberForm()">Add member</button>') +
@@ -928,7 +935,8 @@ function editItemForm(id, spareId) {
   var dl = '<datalist id="locs">' + locations().map(function (l) { return '<option value="' + esc(l) + '">'; }).join('') + '</datalist>';
   showModal('<h3>' + (id ? 'Edit ' + esc(i.id) : spareId ? '🏷 Set up sticker #' + esc(spareId) : 'Add equipment') + '</h3>' + dl +
     (spareId ? '<div class="hint">This is a blank pre-printed sticker. Pick what it\'s going on.</div>' : '') +
-    '<label>Type</label><select id="e-type" onchange="typeFieldsFor(this.value, ' + (id ? 'getItem(\'' + esc(id) + '\')' : '{}') + ')">' + TYPES.map(function (t) { return '<option' + (t === i.type ? ' selected' : '') + '>' + t + '</option>'; }).join('') + '</select>' +
+    '<label>Type</label><select id="e-type" onchange="$(\'e-newtype\').classList.toggle(\'hidden\', this.value !== \'__other\');typeFieldsFor(this.value, ' + (id ? 'getItem(\'' + esc(id) + '\')' : '{}') + ')">' + types().map(function (t) { return '<option value="' + esc(t) + '"' + (t === i.type ? ' selected' : '') + '>' + esc(t) + '</option>'; }).join('') + '<option value="__other">➕ Other (type a new kind)…</option></select>' +
+    '<input id="e-newtype" class="hidden" placeholder="New type, e.g. Suction unit, Stair chair" style="margin-top:6px">' +
     '<label>Name / label</label><input id="e-name" value="' + esc(i.name) + '" placeholder="e.g. FR Bag 1, O2 D-Tank 3, AED — Rig 45-10">' +
     (spareId ? '<input id="e-id" type="hidden" value="' + esc(spareId) + '">' : !id ? '<label>ID (leave blank = next spare sticker' + (spares().length ? ', #' + esc(spares().slice().sort(function (a, b) { return a - b; })[0]) : '') + ')</label><input id="e-id" placeholder="Auto" inputmode="numeric">' : '') +
     '<input id="e-home" type="hidden" value="' + esc(i.homeLocation || HOME_LOCATION) + '">' +
@@ -951,6 +959,7 @@ function typeFieldsFor(type, i) {
 }
 function saveItem(id) {
   var type = $('e-type').value;
+  if (type === '__other') { type = $('e-newtype').value.trim(); if (!type) { toast('Type the new item type'); $('e-newtype').focus(); return; } }
   var b = { action: id ? 'updateItem' : 'addItem', type: type, name: $('e-name').value.trim(), homeLocation: $('e-home').value.trim(), notes: $('e-notes').value.trim() };
   if (id) { b.id = id; } else if ($('e-id').value.trim()) b.id = $('e-id').value.trim().toUpperCase();
   if (!b.name) { toast('Name required'); return; }
@@ -997,9 +1006,9 @@ function stickerPicker(pre) {
     SHEET_F.map(function (f) { return '<div><label style="font-size:12px">' + f[1] + '</label><input id="sh-' + f[0] + '" type="number" step="0.01" inputmode="decimal" value="' + c[f[0]] + '" onchange="sheetSave()"></div>'; }).join('') +
     '</div><button class="btn ghost sm" style="margin-top:8px" onclick="sheetReset()">Reset to default</button></details></div>' +
     '<div class="row" style="margin-top:10px"><button class="btn ghost sm" style="width:100%" onclick="stkAll(true)">☑ Select all</button><button class="btn ghost sm" style="width:100%" onclick="stkAll(false)">☐ Clear</button></div>' +
-    '<div class="checks" style="margin:6px 0 10px">' + TYPES.map(function (t) {
+    '<div class="checks" style="margin:6px 0 10px">' + types().map(function (t) {
       var l = act.filter(function (i) { return i.type === t; });
-      return l.length ? '<div style="display:flex;align-items:center;justify-content:space-between;margin-top:12px"><b>' + TYPE_META[t].icon + ' ' + t + ' (' + l.length + ')</b><button class="btn ghost sm" onclick="stkAll(true,\'' + t + '\')">Select all</button></div>' +
+      return l.length ? '<div style="display:flex;align-items:center;justify-content:space-between;margin-top:12px"><b>' + tm(t).icon + ' ' + esc(t) + ' (' + l.length + ')</b><button class="btn ghost sm" onclick="stkAll(true,\'' + t + '\')">Select all</button></div>' +
         l.map(function (i) { return '<label class="ck"><input type="checkbox" data-stk="' + esc(i.id) + '" data-type="' + esc(t) + '" onchange="stkCount()"' + (pre.indexOf(i.id) >= 0 ? ' checked' : '') + '> ' + esc(i.name) + ' <span class="hint">' + esc(i.id) + '</span></label>'; }).join('') : '';
     }).join('') + (spares().length ? '<div style="display:flex;align-items:center;justify-content:space-between;margin-top:12px"><b>🏷 Blank spare stickers (' + spares().length + ')</b><button class="btn ghost sm" onclick="stkAll(true,\'Spare\')">Select all</button></div>' +
       '<div class="hint">Print now, stick on new equipment later — scan it as admin to set it up.</div>' +
