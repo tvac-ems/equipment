@@ -172,7 +172,7 @@ details.sec[open]>summary{margin-bottom:10px}
 <script>
 // ════════ CONFIG ════════
 // Paste the Apps Script web-app /exec URL here (update when redeploying under the TVAC account).
-var APP_VERSION = '2026-09-30.8'; // bump on every release — open apps reload themselves when this changes
+var APP_VERSION = '2026-10-01.1'; // bump on every release — open apps reload themselves when this changes
 var API_URL = 'https://script.google.com/macros/s/AKfycbxEZyMAzgTEBhZhQ7bpifXX3P3sojxhjsn69vTFJPMBI4rsmAjxpTInBUMIAe7WB02W/exec';
 // URL encoded into QR stickers (this page). Auto-detected; override if hosting elsewhere.
 // Single home base for all equipment (items return here on Check IN).
@@ -441,7 +441,7 @@ function glanceHtml(active) {
   var box = function (st, cls, lbl) { return '<div class="gl ' + cls + (S.filter === st ? ' active' : '') + '" onclick="setFilter(\'' + st + '\')"><div class="n">' + c(st) + '</div><div class="l">' + lbl + '</div></div>'; };
   var asg = active.filter(function (i) { return i.status === 'Assigned'; });
   var by = {};
-  asg.forEach(function (i) { var k = holderName(i) + (holderId(i) ? ' (#' + holderId(i) + ')' : ''); (by[k] = by[k] || []).push(i); });
+  asg.filter(function (i) { return !onVeh(i); }).forEach(function (i) { var k = holderName(i) + (holderId(i) ? ' (#' + holderId(i) + ')' : ''); (by[k] = by[k] || []).push(i); });
   var who = Object.keys(by).sort().map(function (k) {
     return '<div class="who" onclick="setFilter(\'Assigned\')"><b>👤 ' + esc(k) + '</b>' + by[k].map(function (i) { return '<span>' + itemIcon(i) + ' ' + esc(i.name) + (holderDest(i) ? ' → ' + esc(holderDest(i)) : '') + ' — out since ' + fmtTs(i.lastUpdated) + '</span>'; }).join('') + '</div>';
   }).join('');
@@ -552,6 +552,8 @@ function logRow(l) {
 
 // ════════ CHECK IN / OUT ════════
 function holderId(i) { var m = i.status === 'Assigned' && String(i.location || '').match(/\(#([^)]+)\)/); return m ? m[1] : ''; }
+/** Signed out to an agency vehicle → the vehicle holds it (not the member who loaded it). */
+function heldByVeh(i) { var d = holderDest(i); return vehicles().indexOf(d) >= 0 ? d : ''; }
 function holderName(i) { return String(i.location || '').replace(/\s*\(#.*$/, '') || 'the member'; }
 function holderDest(i) { var m = i.status === 'Assigned' && String(i.location || '').match(/ to (.+)$/); return m ? m[1] : ''; }
 /** Members can only sign in/out (or move to a vehicle) an item they just scanned or typed the ID of. Admins can do it from anywhere. */
@@ -565,7 +567,11 @@ function notYours(id) {
     '<div class="hint" style="margin-top:10px;text-align:center">Only ' + esc(holderName(i)) + ' or an admin can sign this item back in. Ask an admin to sign it in for you.</div>' +
     '<div class="row" style="margin-top:14px"><button class="btn" onclick="openItem(\'' + esc(id) + '\')">OK</button></div>');
 }
-function canSignIn(i) { var h = holderId(i); return !h || h === S.member.id || isAdmin(); }
+function canSignIn(i) {
+  if (isAdmin()) return true;
+  if (heldByVeh(i)) return true; // any member can return it from an agency vehicle
+  var h = holderId(i); return !h || h === S.member.id;
+}
 function memberOptions(sel) {
   var el = $('f-for'); if (!el) return;
   var fill = function (list) {
@@ -581,7 +587,8 @@ function memberOptions(sel) {
 function actionForm(id, status) {
   var i = getItem(id), out = status === 'OUT';
   if (!canAct(i)) { toast('Scan the QR sticker (or type the ID) first'); return; }
-  var defFor = (!out && holderId(i)) || S.member.id, defName = (!out && holderId(i)) ? holderName(i) + ' (#' + holderId(i) + ')' : S.member.name + ' (#' + S.member.id + ') — me';
+  var hid = !out && !heldByVeh(i) && holderId(i);
+  var defFor = hid || S.member.id, defName = hid ? holderName(i) + ' (#' + holderId(i) + ')' : S.member.name + ' (#' + S.member.id + ') — me';
   var dl = '<datalist id="locs">' + locations().map(function (l) { return '<option value="' + esc(l) + '">'; }).join('') + '</datalist>';
   var extra = '';
   if (out) { var kk0 = i.type === 'First Responder Bag' && kindOf(i), need = kk0 && kk0.also ? kk0.also : [];
