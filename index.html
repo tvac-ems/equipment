@@ -173,7 +173,7 @@ details.sec[open]>summary{margin-bottom:10px}
 <script>
 // ════════ CONFIG ════════
 // Paste the Apps Script web-app /exec URL here (update when redeploying under the TVAC account).
-var APP_VERSION = '2026-10-01.3'; // bump on every release — open apps reload themselves when this changes
+var APP_VERSION = '2026-10-01.4'; // bump on every release — open apps reload themselves when this changes
 var API_URL = 'https://script.google.com/macros/s/AKfycbxEZyMAzgTEBhZhQ7bpifXX3P3sojxhjsn69vTFJPMBI4rsmAjxpTInBUMIAe7WB02W/exec';
 // URL encoded into QR stickers (this page). Auto-detected; override if hosting elsewhere.
 // Single home base for all equipment (items return here on Check IN).
@@ -883,7 +883,8 @@ function renderAdmin() {
   if (!isAdmin()) { go('home'); return; }
   var offCount = S.items.filter(function (i) { return !i.active; }).length;
   $('view').innerHTML =
-    sect('add', '➕ Add item & stickers', spares().length ? spares().length + ' blank stickers' : '', (spares().length ? '<div class="hint" style="margin-bottom:8px">' + spares().length + ' blank pre-printed stickers left. Scan one to set it up, or Add item uses the next one.</div>' : '') + '<div class="row"><button class="btn" onclick="editItemForm()">Add item</button><button class="btn ghost" onclick="stickerPicker()">🖨 QR stickers</button></div>') +
+    sect('add', '➕ Add item', spares().length ? spares().length + ' blank stickers left' : '', (spares().length ? '<div class="hint" style="margin-bottom:8px">' + spares().length + ' blank pre-printed stickers left. Scan one to set it up, or Add item uses the next one.</div>' : '') + '<button class="btn" onclick="editItemForm()">Add item</button>') +
+    sect('stk', '🖨 QR stickers', S.items.length + ' items', '<div class="hint" style="margin-bottom:8px">Print or download QR stickers for any items, including blank spares for new equipment.</div><button class="btn" onclick="stickerPicker()">🖨 QR stickers</button>') +
     sect('edit', '✏️ Edit items', S.items.length + ' items', editBody(S.items)) +
     sect('active', '✅ Active stickers', (S.items.length - offCount) + ' active' + (offCount ? ' · ' + offCount + ' inactive' : ''), activeBody(S.items)) +
     sect('kinds', '🎒 FR bag kinds', kinds().length + ' kinds', kindsCard()) +
