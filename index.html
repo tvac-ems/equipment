@@ -172,7 +172,7 @@ details.sec[open]>summary{margin-bottom:10px}
 <script>
 // ════════ CONFIG ════════
 // Paste the Apps Script web-app /exec URL here (update when redeploying under the TVAC account).
-var APP_VERSION = '2026-09-30.5'; // bump on every release — open apps reload themselves when this changes
+var APP_VERSION = '2026-09-30.6'; // bump on every release — open apps reload themselves when this changes
 var API_URL = 'https://script.google.com/macros/s/AKfycbxEZyMAzgTEBhZhQ7bpifXX3P3sojxhjsn69vTFJPMBI4rsmAjxpTInBUMIAe7WB02W/exec';
 // URL encoded into QR stickers (this page). Auto-detected; override if hosting elsewhere.
 // Single home base for all equipment (items return here on Check IN).
@@ -529,11 +529,10 @@ function itemHtml(i, log) {
       : out ? (canSignIn(i) ? '<button class="btn green" onclick="actionForm(\'' + esc(i.id) + '\',\'IN\')">✓ Sign IN</button>'
              : '<button class="btn ghost" disabled style="opacity:1;color:var(--text2);font-size:13px">🔒 Only ' + esc(holderName(i)) + ' or an admin can sign in</button>')
            : isNA(i) ? (isAdmin() ? '<button class="btn green" onclick="statusForm(\'' + esc(i.id) + '\',\'Available\')">✅ Fixed — mark available</button>' : '<div class="o2calc" style="width:100%;text-align:center;margin:0">⚠ Needs attention — an admin will mark it fixed.</div>')
-           : onv ? '<button class="btn green" onclick="submitVehicle(\'' + esc(i.id) + '\',\'\')">🏠 Take off vehicle</button>'
+           : onv ? '<button class="btn green" onclick="submitVehicle(\'' + esc(i.id) + '\',\'\')">✓ Sign IN (off ' + esc(i.location) + ')</button>'
            : '<button class="btn red" onclick="actionForm(\'' + esc(i.id) + '\',\'OUT\')">↗ Sign OUT</button>') +
       '</div>' +
       '<div class="row" style="margin-bottom:12px">' +
-      ((i.status === 'Available' || onv) && vehicles().length && canAct(i) ? '<button class="btn ghost sm" onclick="vehicleForm(\'' + esc(i.id) + '\')">🚑 ' + (onv ? 'Move vehicle' : 'Put on vehicle') + '</button>' : '') +
       (!isNA(i) && i.status !== 'Not Available' ? '<button class="btn ghost sm" onclick="statusForm(\'' + esc(i.id) + '\',\'Out of Service\')">⚠ Needs attention</button>' : '') +
       (i.status === 'Not Available' ? '<button class="btn ghost sm" style="width:100%" onclick="statusForm(\'' + esc(i.id) + '\',\'Available\')">✅ Found — Available</button>' : '') +
       '</div>' : '') +
@@ -549,8 +548,9 @@ function logRow(l) {
 }
 
 // ════════ CHECK IN / OUT ════════
-function holderId(i) { var m = i.status === 'Assigned' && String(i.location || '').match(/\(#([^)]+)\)\s*$/); return m ? m[1] : ''; }
-function holderName(i) { return String(i.location || '').replace(/\s*\(#[^)]+\)\s*$/, '') || 'the member'; }
+function holderId(i) { var m = i.status === 'Assigned' && String(i.location || '').match(/\(#([^)]+)\)/); return m ? m[1] : ''; }
+function holderName(i) { return String(i.location || '').replace(/\s*\(#.*$/, '') || 'the member'; }
+function holderDest(i) { var m = i.status === 'Assigned' && String(i.location || '').match(/ to (.+)$/); return m ? m[1] : ''; }
 /** Members can only sign in/out (or move to a vehicle) an item they just scanned or typed the ID of. Admins can do it from anywhere. */
 function canAct(i) { var k = String(S.scanId || '').toUpperCase(); return isAdmin() || (!!k && (k === i.id.toUpperCase() || k === String(i.oldId || '').toUpperCase())); }
 function canSignIn(i) { var h = holderId(i); return !h || h === S.member.id || isAdmin(); }
@@ -569,7 +569,7 @@ function memberOptions(sel) {
 function actionForm(id, status) {
   var i = getItem(id), out = status === 'OUT';
   if (!canAct(i)) { toast('Scan the QR sticker (or type the ID) first'); return; }
-  var defFor = (!out && holderId(i)) || S.member.id, defName = (!out && holderId(i)) ? i.location : S.member.name + ' (#' + S.member.id + ') — me';
+  var defFor = (!out && holderId(i)) || S.member.id, defName = (!out && holderId(i)) ? holderName(i) + ' (#' + holderId(i) + ')' : S.member.name + ' (#' + S.member.id + ') — me';
   var dl = '<datalist id="locs">' + locations().map(function (l) { return '<option value="' + esc(l) + '">'; }).join('') + '</datalist>';
   var extra = '';
   if (out) { var kk0 = i.type === 'First Responder Bag' && kindOf(i), need = kk0 && kk0.also ? kk0.also : [];
@@ -583,6 +583,8 @@ function actionForm(id, status) {
     (isAdmin() ? '<label>' + (out ? 'Sign out to' : 'Returned by') + '</label><select id="f-for"><option value="' + esc(defFor) + '">' + esc(defName) + '</option></select>' +
       '<div class="hint" style="margin-top:4px">Admin: choose the member who ' + (out ? 'is taking' : 'used') + ' it. History shows them, entered by you.</div>'
       : '<div class="o2calc" style="margin-top:10px">👤 ' + (out ? 'Signing out to ' : 'Returned by ') + esc(S.member.name) + ' (#' + esc(S.member.id) + ')</div>') +
+    (out ? '<label>Going to (vehicle) <span style="color:var(--bad)">*</span></label><select id="f-dest"><option value="" selected disabled>— Choose —</option><option value="Own vehicle">🚗 Own vehicle</option>' +
+      vehicles().map(function (v) { return '<option value="' + esc(v) + '">🚑 ' + esc(v) + '</option>'; }).join('') + '</select>' : '') +
     extra +
     (!out && i.type === 'First Responder Bag' ? '<div class="checks" style="margin-top:8px"><label class="ck"><input type="checkbox" id="f-na"> ⚠ Needs attention (broken, needs restock, etc.) — explain in notes</label></div>' : '') +
     (out ? '<input id="f-notes" type="hidden" value="">' : '<label>Notes (optional)</label><textarea id="f-notes"></textarea>') +
@@ -599,7 +601,9 @@ function o2Hint(size) {
 }
 function submitAction(id, status) {
   var i = getItem(id);
+  if (status === 'OUT' && !$('f-dest').value) { toast('Choose where it\'s being signed out to'); $('f-dest').focus(); return; }
   var b = { action: 'checkInOut', id: id, status: status, notes: $('f-notes').value.trim() };
+  if (status === 'OUT') b.dest = $('f-dest').value;
   var fe = $('f-for'), who = { id: S.member.id, name: S.member.name };
   if (fe && fe.value) { b.forMember = fe.value; var t = fe.options[fe.selectedIndex].text.replace(/\s*\(#[^)]+\).*$/, ''); who = { id: fe.value, name: t }; }
   if ($('f-call')) b.call = $('f-call').value.trim();
@@ -615,7 +619,7 @@ function submitAction(id, status) {
   // optimistic: update the screen right away, save in the background
   var before = JSON.parse(JSON.stringify(i)), out = status === 'OUT', cond = b.condition || i.condition || 'OK';
   i.status = out ? 'Assigned' : (cond === 'Out of Service' ? 'Out of Service' : 'Available');
-  i.location = out ? who.name + ' (#' + who.id + ')' : (i.homeLocation || HOME_LOCATION);
+  i.location = out ? who.name + ' (#' + who.id + ') — signed out ' + new Date().toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }).replace(',', '') + ' to ' + b.dest : (i.homeLocation || HOME_LOCATION);
   i.lastMember = who.id; i.lastUpdated = new Date().toISOString(); i.condition = cond;
   if (!out) i.statusNote = cond !== 'OK' ? (b.notes || cond) : '';
   quickFlags(i);
@@ -642,9 +646,9 @@ function submitVehicle(id, v) {
     .catch(function (e) { updateLocal(before); render(); toast('⚠ Not saved: ' + e.message, 5000); });
 }
 function vehiclesBody() {
-  return '<div class="hint" style="margin-bottom:8px">Anyone can put equipment on a vehicle from the item page. Names are also editable in the "Vehicles" sheet tab.</div>' +
+  return '<div class="hint" style="margin-bottom:8px">When signing out, members must choose: own vehicle or one of these. Names are also editable in the "Vehicles" sheet tab.</div>' +
     vehicles().map(function (v, n) {
-      var cnt = S.items.filter(function (i) { return i.status === 'On Vehicle' && i.location === v; }).length;
+      var cnt = S.items.filter(function (i) { return (i.status === 'On Vehicle' && i.location === v) || holderDest(i) === v; }).length;
       return '<div class="item" onclick="vehForm(' + n + ')"><div class="ic">🚑</div><div class="mid"><div class="nm">' + esc(v) + '</div><div class="sub">' + cnt + ' item' + (cnt === 1 ? '' : 's') + ' on it</div></div><span class="hint">Edit ›</span></div>';
     }).join('') + '<button class="btn ghost" style="margin-top:10px" onclick="vehForm(-1)">Add vehicle</button>';
 }
