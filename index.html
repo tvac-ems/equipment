@@ -173,7 +173,7 @@ details.sec[open]>summary{margin-bottom:10px}
 <script>
 // ════════ CONFIG ════════
 // Paste the Apps Script web-app /exec URL here (update when redeploying under the TVAC account).
-var APP_VERSION = '2026-10-01.4'; // bump on every release — open apps reload themselves when this changes
+var APP_VERSION = '2026-10-01.5'; // bump on every release — open apps reload themselves when this changes
 var API_URL = 'https://script.google.com/macros/s/AKfycbxEZyMAzgTEBhZhQ7bpifXX3P3sojxhjsn69vTFJPMBI4rsmAjxpTInBUMIAe7WB02W/exec';
 // URL encoded into QR stickers (this page). Auto-detected; override if hosting elsewhere.
 // Single home base for all equipment (items return here on Check IN).
@@ -928,7 +928,7 @@ function editItemForm(id, spareId) {
   var dl = '<datalist id="locs">' + locations().map(function (l) { return '<option value="' + esc(l) + '">'; }).join('') + '</datalist>';
   showModal('<h3>' + (id ? 'Edit ' + esc(i.id) : spareId ? '🏷 Set up sticker #' + esc(spareId) : 'Add equipment') + '</h3>' + dl +
     (spareId ? '<div class="hint">This is a blank pre-printed sticker. Pick what it\'s going on.</div>' : '') +
-    '<label>Type</label><select id="e-type" onchange="typeFieldsFor(this.value)"' + (id ? ' disabled' : '') + '>' + TYPES.map(function (t) { return '<option' + (t === i.type ? ' selected' : '') + '>' + t + '</option>'; }).join('') + '</select>' +
+    '<label>Type</label><select id="e-type" onchange="typeFieldsFor(this.value, ' + (id ? 'getItem(\'' + esc(id) + '\')' : '{}') + ')">' + TYPES.map(function (t) { return '<option' + (t === i.type ? ' selected' : '') + '>' + t + '</option>'; }).join('') + '</select>' +
     '<label>Name / label</label><input id="e-name" value="' + esc(i.name) + '" placeholder="e.g. FR Bag 1, O2 D-Tank 3, AED — Rig 45-10">' +
     (spareId ? '<input id="e-id" type="hidden" value="' + esc(spareId) + '">' : !id ? '<label>ID (leave blank = next spare sticker' + (spares().length ? ', #' + esc(spares().slice().sort(function (a, b) { return a - b; })[0]) : '') + ')</label><input id="e-id" placeholder="Auto" inputmode="numeric">' : '') +
     '<input id="e-home" type="hidden" value="' + esc(i.homeLocation || HOME_LOCATION) + '">' +
@@ -950,7 +950,7 @@ function typeFieldsFor(type, i) {
   $('e-typefields').innerHTML = h;
 }
 function saveItem(id) {
-  var type = id ? getItem(id).type : $('e-type').value;
+  var type = $('e-type').value;
   var b = { action: id ? 'updateItem' : 'addItem', type: type, name: $('e-name').value.trim(), homeLocation: $('e-home').value.trim(), notes: $('e-notes').value.trim() };
   if (id) { b.id = id; } else if ($('e-id').value.trim()) b.id = $('e-id').value.trim().toUpperCase();
   if (!b.name) { toast('Name required'); return; }
