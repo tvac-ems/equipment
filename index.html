@@ -172,7 +172,7 @@ details.sec[open]>summary{margin-bottom:10px}
 <script>
 // ════════ CONFIG ════════
 // Paste the Apps Script web-app /exec URL here (update when redeploying under the TVAC account).
-var APP_VERSION = '2026-09-30.7'; // bump on every release — open apps reload themselves when this changes
+var APP_VERSION = '2026-09-30.8'; // bump on every release — open apps reload themselves when this changes
 var API_URL = 'https://script.google.com/macros/s/AKfycbxEZyMAzgTEBhZhQ7bpifXX3P3sojxhjsn69vTFJPMBI4rsmAjxpTInBUMIAe7WB02W/exec';
 // URL encoded into QR stickers (this page). Auto-detected; override if hosting elsewhere.
 // Single home base for all equipment (items return here on Check IN).
@@ -213,6 +213,9 @@ var STATUS_META = {
 };
 var STATUSES = Object.keys(STATUS_META);
 function isNA(i) { return i.status !== 'Assigned' && i.status !== 'Not Available' && i.status !== 'On Vehicle' && (i.status === 'Out of Service' || (i.condition && i.condition !== 'OK')); }
+/** Signed out to one of the TVAC vehicles (or an old "On Vehicle" row). */
+function onVeh(i) { return i.status === 'On Vehicle' || vehicles().indexOf(holderDest(i)) >= 0; }
+function vehOf(i) { return i.status === 'On Vehicle' ? i.location : holderDest(i); }
 function effStatus(i) { return isNA(i) ? 'Out of Service' : i.status; }
 function flagText(t) { return String(t).replace(/^(Unavailable|Out of Service)/, 'Needs attention'); }
 function statusBadge(i) { var m = STATUS_META[effStatus(i)] || STATUS_META['Available']; return '<span class="badge ' + m.cls + '">' + m.short + '</span>'; }
@@ -245,7 +248,7 @@ function apiPost(body) {
     .then(function (r) { return r.json(); }).then(chk);
 }
 // ════════ OFFLINE QUEUE ════════
-// Sign in/out, needs attention and vehicle moves still work with no signal: they're saved on the phone
+// Sign in/out and needs attention still work with no signal: they're saved on the phone
 // and sent (with the time they really happened) as soon as the connection is back.
 function isNetErr(e) { return !navigator.onLine || e instanceof TypeError || /Failed to fetch|Load failed|NetworkError|network/i.test(String(e && e.message)); }
 function outbox() { try { return JSON.parse(store('tvac_outbox') || '[]'); } catch (e) { return []; } }
@@ -434,7 +437,7 @@ function renderHome() {
   renderList();
 }
 function glanceHtml(active) {
-  var c = function (st) { return active.filter(function (i) { return st === 'Out of Service' ? isNA(i) || i.status === 'Not Available' : effStatus(i) === st; }).length; };
+  var c = function (st) { return active.filter(function (i) { return st === 'Out of Service' ? isNA(i) || i.status === 'Not Available' : st === 'On Vehicle' ? onVeh(i) : effStatus(i) === st; }).length; };
   var box = function (st, cls, lbl) { return '<div class="gl ' + cls + (S.filter === st ? ' active' : '') + '" onclick="setFilter(\'' + st + '\')"><div class="n">' + c(st) + '</div><div class="l">' + lbl + '</div></div>'; };
   var asg = active.filter(function (i) { return i.status === 'Assigned'; });
   var by = {};
@@ -443,9 +446,9 @@ function glanceHtml(active) {
     return '<div class="who" onclick="setFilter(\'Assigned\')"><b>👤 ' + esc(k) + '</b>' + by[k].map(function (i) { return '<span>' + itemIcon(i) + ' ' + esc(i.name) + (holderDest(i) ? ' → ' + esc(holderDest(i)) : '') + ' — out since ' + fmtTs(i.lastUpdated) + '</span>'; }).join('') + '</div>';
   }).join('');
   var vby = {};
-  active.filter(function (i) { return i.status === 'On Vehicle'; }).forEach(function (i) { (vby[i.location] = vby[i.location] || []).push(i); });
+  active.filter(onVeh).forEach(function (i) { var k = vehOf(i); (vby[k] = vby[k] || []).push(i); });
   var veh = vehicles().concat(Object.keys(vby).filter(function (k) { return vehicles().indexOf(k) < 0; })).filter(function (k) { return vby[k]; }).map(function (k) {
-    return '<div class="who" onclick="setFilter(\'On Vehicle\')"><b>🚑 ' + esc(k) + ' <span class="hint">(' + vby[k].length + ')</span></b>' + vby[k].map(function (i) { return '<span>' + itemIcon(i) + ' ' + esc(i.name) + ' <span class="hint">#' + esc(i.id) + '</span></span>'; }).join('') + '</div>';
+    return '<div class="who" onclick="setFilter(\'On Vehicle\')"><b>🚑 ' + esc(k) + ' <span class="hint">(' + vby[k].length + ')</span></b>' + vby[k].map(function (i) { return '<span>' + itemIcon(i) + ' ' + esc(i.name) + ' <span class="hint">#' + esc(i.id) + (i.status === 'Assigned' ? ' · ' + esc(holderName(i)) : '') + '</span></span>'; }).join('') + '</div>';
   }).join('');
   return '<div class="card"><h2 style="margin-bottom:0">At a glance <span class="hint" style="font-weight:500">· ' + active.length + ' items</span></h2>' +
     '<div class="glance" style="grid-template-columns:repeat(4,1fr)">' + box('Available', 'av', 'Available') + box('Assigned', 'as', 'Signed out') + box('On Vehicle', 'veh', '🚑 On vehicle') + box('Out of Service', 'warn', '⚠ Needs attention') + '</div>' +
@@ -462,7 +465,7 @@ function renderList() {
   var q = S.q.toLowerCase().trim();
   var list = S.items.filter(function (i) {
     if (!i.active) return false;
-    if (STATUS_META[S.filter] && (S.filter === 'Out of Service' ? !(isNA(i) || i.status === 'Not Available') : effStatus(i) !== S.filter)) return false;
+    if (STATUS_META[S.filter] && (S.filter === 'Out of Service' ? !(isNA(i) || i.status === 'Not Available') : S.filter === 'On Vehicle' ? !onVeh(i) : effStatus(i) !== S.filter)) return false;
     if (S.filter === 'Mine' && !(i.status === 'Assigned' && String(i.lastMember) === String(S.member.id))) return false;
     if (S.filter === 'Flagged' && !i.flags.length) return false;
     if (TYPE_META[S.filter] && i.type !== S.filter) return false;
@@ -525,11 +528,11 @@ function itemHtml(i, log) {
     '<div style="flex:1"><h3>' + esc(i.name) + '</h3><div class="hint" style="margin:0">' + esc(i.type) + kindTag(i) + '</div></div>' +
     '<button class="btn ghost sm" onclick="closeModal()">✕</button></div>' + inactive + banner + flags + hist +
     (i.active ? '<div class="row" style="margin:12px 0">' +
-      (!canAct(i) && !isNA(i) ? '<div class="o2calc" style="width:100%;text-align:center;margin:0">📷 To sign this ' + (out ? 'in' : onv ? 'off the vehicle' : 'out') + ', <b>scan its QR sticker</b> or type its ID (#' + esc(i.id) + ') on the Scan screen.</div>'
+      (!canAct(i) && !isNA(i) ? '<div class="o2calc" style="width:100%;text-align:center;margin:0">📷 To sign this ' + (out || onv ? 'in' : 'out') + ', <b>scan its QR sticker</b> or type its ID (#' + esc(i.id) + ') on the Scan screen.</div>'
       : out ? (canSignIn(i) ? '<button class="btn green" onclick="actionForm(\'' + esc(i.id) + '\',\'IN\')">✓ Sign IN</button>'
              : '<button class="btn green" onclick="notYours(\'' + esc(i.id) + '\')">✓ Sign IN</button>')
            : isNA(i) ? (isAdmin() ? '<button class="btn green" onclick="statusForm(\'' + esc(i.id) + '\',\'Available\')">✅ Fixed — mark available</button>' : '<div class="o2calc" style="width:100%;text-align:center;margin:0">⚠ Needs attention — an admin will mark it fixed.</div>')
-           : onv ? '<button class="btn green" onclick="submitVehicle(\'' + esc(i.id) + '\',\'\')">✓ Sign IN (off ' + esc(i.location) + ')</button>'
+           : onv ? '<button class="btn green" onclick="actionForm(\'' + esc(i.id) + '\',\'IN\')">✓ Sign IN</button>'
            : '<button class="btn red" onclick="actionForm(\'' + esc(i.id) + '\',\'OUT\')">↗ Sign OUT</button>') +
       '</div>' +
       '<div class="row" style="margin-bottom:12px">' +
@@ -638,26 +641,10 @@ function submitAction(id, status) {
 }
 
 // ════════ VEHICLES ════════
-function vehicleForm(id) {
-  var i = getItem(id); if (!canAct(i)) { toast('Scan the QR sticker (or type the ID) first'); return; }
-  var i2 = i, cur = i.status === 'On Vehicle' ? i.location : '';
-  showModal('<h3>🚑 ' + (cur ? 'Move' : 'Put') + ' ' + esc(i.name) + (cur ? '' : ' on a vehicle') + '</h3><div class="hint">#' + esc(i.id) + (cur ? ' · now on ' + esc(cur) : '') + '</div>' +
-    '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:12px">' + vehicles().filter(function (v) { return v !== cur; }).map(function (v) {
-      return '<button class="btn ghost" onclick="submitVehicle(\'' + esc(id) + '\',vehicles()[' + vehicles().indexOf(v) + '])">🚑 ' + esc(v) + '</button>'; }).join('') + '</div>' +
-    '<div class="hint" style="margin-top:8px">History will show that you (' + esc(S.member.name) + ') put it there.</div>' +
-    '<div class="row" style="margin-top:14px"><button class="btn ghost" onclick="openItem(\'' + esc(id) + '\')">Back</button></div>');
-}
-function submitVehicle(id, v) {
-  var i = getItem(id), before = JSON.parse(JSON.stringify(i));
-  i.status = v ? 'On Vehicle' : 'Available'; i.location = v || i.homeLocation || HOME_LOCATION; i.lastMember = S.member.id; i.lastUpdated = new Date().toISOString();
-  closeModal(); toast(v ? '🚑 ' + i.name + ' → ' + v : '🏠 ' + i.name + ' back at station'); render();
-  postQ({ action: 'setVehicle', id: id, vehicle: v }).then(function (d) { if (d.queued) { saveCache(); queuedToast(d); return; } updateLocal(d.item); saveCache(); if (!$('modal-root').innerHTML) render(); })
-    .catch(function (e) { updateLocal(before); render(); toast('⚠ Not saved: ' + e.message, 5000); });
-}
 function vehiclesBody() {
   return '<div class="hint" style="margin-bottom:8px">When signing out, members must choose: own vehicle or one of these. Names are also editable in the "Vehicles" sheet tab.</div>' +
     vehicles().map(function (v, n) {
-      var cnt = S.items.filter(function (i) { return (i.status === 'On Vehicle' && i.location === v) || holderDest(i) === v; }).length;
+      var cnt = S.items.filter(function (i) { return vehOf(i) === v; }).length;
       return '<div class="item" onclick="vehForm(' + n + ')"><div class="ic">🚑</div><div class="mid"><div class="nm">' + esc(v) + '</div><div class="sub">' + cnt + ' item' + (cnt === 1 ? '' : 's') + ' on it</div></div><span class="hint">Edit ›</span></div>';
     }).join('') + '<button class="btn ghost" style="margin-top:10px" onclick="vehForm(-1)">Add vehicle</button>';
 }
