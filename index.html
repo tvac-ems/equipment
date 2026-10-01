@@ -124,7 +124,7 @@ details.sec[open]>summary{margin-bottom:10px}
   .stk .tx{flex:1;min-width:0;display:flex;flex-direction:column;justify-content:center;gap:.02in;font-family:Helvetica,Arial,sans-serif}
   .stk .h{display:flex;align-items:center;gap:.04in;font-weight:800;font-size:7.5pt;color:#1b2a6b;border-bottom:1.5pt solid #c8102e;padding-bottom:.02in}
   .stk .h img{width:.2in;height:.2in}
-  .stk .n{font-weight:800;font-size:11pt;line-height:1.05;color:#000;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .stk .n{font-weight:900;font-size:24pt;line-height:1.05;color:#000;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
   .stk .id{font-size:10pt;font-weight:800;color:#c8102e}
   .stk .f{font-size:5.5pt;color:#333}
 }
@@ -172,7 +172,7 @@ details.sec[open]>summary{margin-bottom:10px}
 <script>
 // ════════ CONFIG ════════
 // Paste the Apps Script web-app /exec URL here (update when redeploying under the TVAC account).
-var APP_VERSION = '2026-09-30.4'; // bump on every release — open apps reload themselves when this changes
+var APP_VERSION = '2026-09-30.5'; // bump on every release — open apps reload themselves when this changes
 var API_URL = 'https://script.google.com/macros/s/AKfycbxEZyMAzgTEBhZhQ7bpifXX3P3sojxhjsn69vTFJPMBI4rsmAjxpTInBUMIAe7WB02W/exec';
 // URL encoded into QR stickers (this page). Auto-detected; override if hosting elsewhere.
 // Single home base for all equipment (items return here on Check IN).
@@ -1014,7 +1014,7 @@ function printStickers(ids) {
   if (!ids.length) { toast('Select at least one item'); return; }
   $('print-area').innerHTML = ids.map(function (id) {
     var i = getItem(id) || { id: id, name: isSpare(id) ? '' : id, type: '' };
-    return '<div class="stk"><img class="qr" src="' + qrImg(qrUrlFor(id)) + '"><div class="tx"><div class="h"><img src="logo.png">TVAC EQUIPMENT</div><div class="n">' + esc(i.name) + '</div><div class="id">' + esc(id) + '</div><div class="f">Scan to sign out · sign in</div></div></div>';
+    return '<div class="stk"><img class="qr" src="' + qrImg(qrUrlFor(id)) + '"><div class="tx" style="flex-direction:row;align-items:center;gap:.1in"><img src="logo.png" style="width:.74in;height:.74in"><div class="n" style="font-size:30pt">' + esc(id) + '</div></div></div>';
   }).join('');
   var mobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent) || navigator.standalone || matchMedia('(display-mode: standalone)').matches;
   if (!mobile) { setTimeout(function () { window.print(); }, 300); return; }
@@ -1030,18 +1030,13 @@ function stickerCanvas(it, logo) {
   var n = q.getModuleCount(), qs = .9 * D, m = qs / (n + 4), ox = .08 * D, oy = (D - qs) / 2;
   x.fillStyle = '#000';
   for (var r = 0; r < n; r++) for (var k = 0; k < n; k++) if (q.isDark(r, k)) x.fillRect(Math.floor(ox + (k + 2) * m), Math.floor(oy + (r + 2) * m), Math.ceil(m), Math.ceil(m));
-  var tx = ox + qs + .08 * D, tw = c.width - tx - .08 * D, y = .2 * D;
-  if (logo) x.drawImage(logo, tx, y - .17 * D, .2 * D, .2 * D);
-  x.fillStyle = '#1b2a6b'; x.font = '800 ' + (7.5 / 72 * D) + 'px Helvetica,Arial,sans-serif'; x.textBaseline = 'alphabetic';
-  x.fillText('TVAC EQUIPMENT', tx + (logo ? .24 * D : 0), y);
-  x.fillStyle = '#c8102e'; x.fillRect(tx, y + .03 * D, tw, 1.5 / 72 * D);
-  var nm = it.name || it.id, fs = 11 / 72 * D; x.fillStyle = '#000'; x.font = '800 ' + fs + 'px Helvetica,Arial,sans-serif';
-  while (x.measureText(nm).width > tw && nm.length > 3) nm = nm.slice(0, -2) + '…';
-  x.fillText(nm, tx, y + .23 * D);
-  x.fillStyle = '#c8102e'; x.font = '800 ' + (10 / 72 * D) + 'px Helvetica,Arial,sans-serif'; x.fillText(it.id, tx, y + .41 * D);
-  var kd = kindOf(it);
-  x.fillStyle = '#333'; x.font = (5.5 / 72 * D) + 'px Helvetica,Arial,sans-serif'; x.fillText((kd ? kd.name.toUpperCase() + ' BAG · ' : '') + 'Scan to sign out · sign in', tx, y + .55 * D);
-  if (kd) { x.fillStyle = kindHex(kd); x.fillRect(c.width - .07 * D, 0, .07 * D, D); }
+  // Sticker = QR + logo + ID only. Names / bag kinds can change later without reprinting.
+  var tx = ox + qs + .1 * D, ls = .74 * D;
+  if (logo) x.drawImage(logo, tx, (D - ls) / 2, ls, ls);
+  var ix = tx + (logo ? ls + .1 * D : 0), fs = 30 / 72 * D, maxw = c.width - ix - .08 * D;
+  x.fillStyle = '#000'; x.textBaseline = 'middle'; x.font = '900 ' + fs + 'px Helvetica,Arial,sans-serif';
+  while (x.measureText(it.id).width > maxw && fs > 10) { fs -= 2; x.font = '900 ' + fs + 'px Helvetica,Arial,sans-serif'; }
+  x.fillText(it.id, ix, D / 2);
   return c;
 }
 function saveBlob(blob, name) { var a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = name; document.body.appendChild(a); a.click(); setTimeout(function () { a.remove(); }, 1000); return a.href; }
