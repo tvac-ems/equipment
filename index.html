@@ -172,7 +172,7 @@ details.sec[open]>summary{margin-bottom:10px}
 <script>
 // ════════ CONFIG ════════
 // Paste the Apps Script web-app /exec URL here (update when redeploying under the TVAC account).
-var APP_VERSION = '2026-09-30.6'; // bump on every release — open apps reload themselves when this changes
+var APP_VERSION = '2026-09-30.7'; // bump on every release — open apps reload themselves when this changes
 var API_URL = 'https://script.google.com/macros/s/AKfycbxEZyMAzgTEBhZhQ7bpifXX3P3sojxhjsn69vTFJPMBI4rsmAjxpTInBUMIAe7WB02W/exec';
 // URL encoded into QR stickers (this page). Auto-detected; override if hosting elsewhere.
 // Single home base for all equipment (items return here on Check IN).
@@ -438,9 +438,9 @@ function glanceHtml(active) {
   var box = function (st, cls, lbl) { return '<div class="gl ' + cls + (S.filter === st ? ' active' : '') + '" onclick="setFilter(\'' + st + '\')"><div class="n">' + c(st) + '</div><div class="l">' + lbl + '</div></div>'; };
   var asg = active.filter(function (i) { return i.status === 'Assigned'; });
   var by = {};
-  asg.forEach(function (i) { (by[i.location] = by[i.location] || []).push(i); });
+  asg.forEach(function (i) { var k = holderName(i) + (holderId(i) ? ' (#' + holderId(i) + ')' : ''); (by[k] = by[k] || []).push(i); });
   var who = Object.keys(by).sort().map(function (k) {
-    return '<div class="who" onclick="setFilter(\'Assigned\')"><b>👤 ' + esc(k) + '</b>' + by[k].map(function (i) { return '<span>' + itemIcon(i) + ' ' + esc(i.name) + ' — out since ' + fmtTs(i.lastUpdated) + '</span>'; }).join('') + '</div>';
+    return '<div class="who" onclick="setFilter(\'Assigned\')"><b>👤 ' + esc(k) + '</b>' + by[k].map(function (i) { return '<span>' + itemIcon(i) + ' ' + esc(i.name) + (holderDest(i) ? ' → ' + esc(holderDest(i)) : '') + ' — out since ' + fmtTs(i.lastUpdated) + '</span>'; }).join('') + '</div>';
   }).join('');
   var vby = {};
   active.filter(function (i) { return i.status === 'On Vehicle'; }).forEach(function (i) { (vby[i.location] = vby[i.location] || []).push(i); });
@@ -527,7 +527,7 @@ function itemHtml(i, log) {
     (i.active ? '<div class="row" style="margin:12px 0">' +
       (!canAct(i) && !isNA(i) ? '<div class="o2calc" style="width:100%;text-align:center;margin:0">📷 To sign this ' + (out ? 'in' : onv ? 'off the vehicle' : 'out') + ', <b>scan its QR sticker</b> or type its ID (#' + esc(i.id) + ') on the Scan screen.</div>'
       : out ? (canSignIn(i) ? '<button class="btn green" onclick="actionForm(\'' + esc(i.id) + '\',\'IN\')">✓ Sign IN</button>'
-             : '<button class="btn ghost" disabled style="opacity:1;color:var(--text2);font-size:13px">🔒 Only ' + esc(holderName(i)) + ' or an admin can sign in</button>')
+             : '<button class="btn green" onclick="notYours(\'' + esc(i.id) + '\')">✓ Sign IN</button>')
            : isNA(i) ? (isAdmin() ? '<button class="btn green" onclick="statusForm(\'' + esc(i.id) + '\',\'Available\')">✅ Fixed — mark available</button>' : '<div class="o2calc" style="width:100%;text-align:center;margin:0">⚠ Needs attention — an admin will mark it fixed.</div>')
            : onv ? '<button class="btn green" onclick="submitVehicle(\'' + esc(i.id) + '\',\'\')">✓ Sign IN (off ' + esc(i.location) + ')</button>'
            : '<button class="btn red" onclick="actionForm(\'' + esc(i.id) + '\',\'OUT\')">↗ Sign OUT</button>') +
@@ -553,6 +553,15 @@ function holderName(i) { return String(i.location || '').replace(/\s*\(#.*$/, ''
 function holderDest(i) { var m = i.status === 'Assigned' && String(i.location || '').match(/ to (.+)$/); return m ? m[1] : ''; }
 /** Members can only sign in/out (or move to a vehicle) an item they just scanned or typed the ID of. Admins can do it from anywhere. */
 function canAct(i) { var k = String(S.scanId || '').toUpperCase(); return isAdmin() || (!!k && (k === i.id.toUpperCase() || k === String(i.oldId || '').toUpperCase())); }
+/** Member tried to sign in something another member has out — against the rules, so explain and send them to an admin. */
+function notYours(id) {
+  var i = getItem(id), dest = holderDest(i);
+  showModal('<div style="text-align:center;font-size:44px;line-height:1">⛔</div><h3 style="text-align:center;margin-top:6px">Contact an admin</h3>' +
+    '<div class="oos-banner warn-banner" style="margin-top:10px"><div class="big">Signed out by ' + esc(holderName(i)) + '</div>' +
+    '<div class="why">' + esc(i.name) + ' (#' + esc(i.id) + ')' + (dest ? ' · ' + esc(dest) : '') + '</div></div>' +
+    '<div class="hint" style="margin-top:10px;text-align:center">Only ' + esc(holderName(i)) + ' or an admin can sign this item back in. Ask an admin to sign it in for you.</div>' +
+    '<div class="row" style="margin-top:14px"><button class="btn" onclick="openItem(\'' + esc(id) + '\')">OK</button></div>');
+}
 function canSignIn(i) { var h = holderId(i); return !h || h === S.member.id || isAdmin(); }
 function memberOptions(sel) {
   var el = $('f-for'); if (!el) return;
