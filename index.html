@@ -102,7 +102,7 @@ details.sec[open]>summary{margin-bottom:10px}
 #login .logo{width:110px;height:110px;object-fit:contain;display:block;margin:0 auto 12px}
 #pin{text-align:center;font-size:26px;letter-spacing:8px}
 #scanner{position:fixed;inset:0;background:#000;z-index:150;display:flex;flex-direction:column}
-#scanner video{flex:1;width:100%;object-fit:cover}
+#scanner video{flex:1 1 0;min-height:0;height:0;width:100%;object-fit:cover}
 #scanner .frame{position:absolute;top:50%;left:50%;width:240px;height:240px;transform:translate(-50%,-60%);border:3px solid #fff;border-radius:18px;box-shadow:0 0 0 9999px rgba(0,0,0,.35)}
 #scanner .bar{padding:16px 16px calc(16px + env(safe-area-inset-bottom));background:#000;width:100%;max-width:520px;margin:0 auto}
 #scanner .bar input{font-size:20px;font-weight:700;letter-spacing:1px}
@@ -173,7 +173,7 @@ details.sec[open]>summary{margin-bottom:10px}
 <script>
 // ════════ CONFIG ════════
 // Paste the Apps Script web-app /exec URL here (update when redeploying under the TVAC account).
-var APP_VERSION = '2026-10-01.2'; // bump on every release — open apps reload themselves when this changes
+var APP_VERSION = '2026-10-01.3'; // bump on every release — open apps reload themselves when this changes
 var API_URL = 'https://script.google.com/macros/s/AKfycbxEZyMAzgTEBhZhQ7bpifXX3P3sojxhjsn69vTFJPMBI4rsmAjxpTInBUMIAe7WB02W/exec';
 // URL encoded into QR stickers (this page). Auto-detected; override if hosting elsewhere.
 // Single home base for all equipment (items return here on Check IN).
