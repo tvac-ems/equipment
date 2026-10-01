@@ -153,6 +153,7 @@ details.sec[open]>summary{margin-bottom:10px}
     <button onclick="refresh()" id="sync">⟳</button>
     <button onclick="accountMenu()" title="My account" style="font-size:13px">👤 Me</button>
   </header>
+  <div id="offbar" class="hidden" style="background:#fff4e5;color:#b45309;font-weight:700;font-size:13px;text-align:center;padding:6px 10px"></div>
   <main id="view"></main>
   <nav class="tabs">
     <button data-tab="home" onclick="go('home')"><span class="i">🏠</span>Home</button>
@@ -171,7 +172,7 @@ details.sec[open]>summary{margin-bottom:10px}
 <script>
 // ════════ CONFIG ════════
 // Paste the Apps Script web-app /exec URL here (update when redeploying under the TVAC account).
-var APP_VERSION = '2026-09-30.3'; // bump on every release — open apps reload themselves when this changes
+var APP_VERSION = '2026-09-30.4'; // bump on every release — open apps reload themselves when this changes
 var API_URL = 'https://script.google.com/macros/s/AKfycbxEZyMAzgTEBhZhQ7bpifXX3P3sojxhjsn69vTFJPMBI4rsmAjxpTInBUMIAe7WB02W/exec';
 // URL encoded into QR stickers (this page). Auto-detected; override if hosting elsewhere.
 // Single home base for all equipment (items return here on Check IN).
@@ -216,6 +217,17 @@ function effStatus(i) { return isNA(i) ? 'Out of Service' : i.status; }
 function flagText(t) { return String(t).replace(/^(Unavailable|Out of Service)/, 'Needs attention'); }
 function statusBadge(i) { var m = STATUS_META[effStatus(i)] || STATUS_META['Available']; return '<span class="badge ' + m.cls + '">' + m.short + '</span>'; }
 function vehicles() { return (S.cfg && S.cfg.vehicles) || []; }
+function spares() { return (S.cfg && S.cfg.spares) || []; }
+function isSpare(id) { return spares().indexOf(String(id).trim().toUpperCase()) >= 0; }
+/** Opened by scanning a sticker / typing its ID / a QR link. Blank spare stickers go to set-up (admins). */
+function openScanned(id) {
+  id = String(id).trim().toUpperCase();
+  if (!getItem(id) && isSpare(id)) {
+    if (isAdmin()) editItemForm(null, id); else toast('Sticker #' + id + ' isn\'t set up yet — ask an admin', 4000);
+    return;
+  }
+  S.scanId = id; openItem(id);
+}
 function whereText(i) { return i.status === 'Assigned' ? '👤 ' + (i.location || '—') : i.status === 'On Vehicle' ? '🚑 ' + (i.location || '—') : i.status === 'Not Available' ? '❓ Not in location' : '📍 ' + (i.location || i.homeLocation || '—'); }
 
 // ════════ STATE ════════
@@ -232,6 +244,44 @@ function apiPost(body) {
   return fetch(API_URL, { method: 'POST', redirect: 'follow', credentials: 'omit', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify(body) })
     .then(function (r) { return r.json(); }).then(chk);
 }
+// ════════ OFFLINE QUEUE ════════
+// Sign in/out, needs attention and vehicle moves still work with no signal: they're saved on the phone
+// and sent (with the time they really happened) as soon as the connection is back.
+function isNetErr(e) { return !navigator.onLine || e instanceof TypeError || /Failed to fetch|Load failed|NetworkError|network/i.test(String(e && e.message)); }
+function outbox() { try { return JSON.parse(store('tvac_outbox') || '[]'); } catch (e) { return []; } }
+function setOutbox(q) { store('tvac_outbox', q.length ? JSON.stringify(q) : null); offbar(); }
+function offbar() {
+  var el = $('offbar'); if (!el) return;
+  var n = outbox().length, off = !navigator.onLine;
+  el.classList.toggle('hidden', !n && !off);
+  el.textContent = off ? '📴 Offline — ' + (n ? n + ' change' + (n > 1 ? 's' : '') + ' saved on this phone, will sync when back online' : 'showing last saved info; sign in/out still works') : n ? '⟳ Syncing ' + n + ' offline change' + (n > 1 ? 's' : '') + '…' : '';
+}
+function postQ(b) {
+  b.at = new Date().toISOString();
+  var send = function () { return apiPost(JSON.parse(JSON.stringify(b))); };
+  if (outbox().length) { var q = outbox(); q.push(b); setOutbox(q); flushOutbox(); return Promise.resolve({ queued: true }); } // keep order
+  return send().catch(function (e) {
+    if (!isNetErr(e)) throw e;
+    var q = outbox(); q.push(b); setOutbox(q); return { queued: true };
+  });
+}
+function flushOutbox() {
+  if (S.flushing) return S.flushing;
+  var q = outbox(); if (!q.length || !navigator.onLine || !S.pin) { offbar(); return Promise.resolve(); }
+  var failed = [];
+  S.flushing = q.reduce(function (p, b) {
+    return p.then(function (stop) {
+      if (stop) return true;
+      return apiPost(JSON.parse(JSON.stringify(b))).then(function () { setOutbox(outbox().slice(1)); return false; })
+        .catch(function (e) { if (isNetErr(e)) return true; failed.push((getItem(b.id) || { name: b.id }).name + ': ' + e.message); setOutbox(outbox().slice(1)); return false; });
+    });
+  }, Promise.resolve(false)).then(function () {
+    S.flushing = null; offbar();
+    if (failed.length) toast('⚠ Some offline changes could not be saved — ' + failed.join(' · '), 8000);
+  });
+  return S.flushing;
+}
+function queuedToast(d) { if (d && d.queued) toast('📴 Saved on this phone — will sync when back online', 3500); }
 function chk(d) {
   if (!d || !d.ok) {
     var msg = (d && d.error) || 'Request failed';
@@ -309,9 +359,9 @@ function startApp() {
   try { var c = JSON.parse(store('tvac_cache') || 'null'); if (c && c.items) { S.items = c.items; S.cfg = c.cfg || {}; S.loaded = true; } } catch (e) {}
   if (S.tab !== 'home' && S.tab !== 'activity' && S.tab !== 'alerts' && !(S.tab === 'admin' && isAdmin())) S.tab = 'home';
   render();
-  if (S.pendingId && getItem(S.pendingId)) { var pid = S.pendingId; S.pendingId = null; S.scanId = pid; openItem(pid); }
+  if (S.pendingId && (getItem(S.pendingId) || isSpare(S.pendingId))) { var pid = S.pendingId; S.pendingId = null; openScanned(pid); }
   refresh().then(function () {
-    if (S.pendingId) { var id = S.pendingId; S.pendingId = null; S.scanId = id; openItem(id); }
+    if (S.pendingId) { var id = S.pendingId; S.pendingId = null; openScanned(id); }
   });
 }
 function quickFlags(i) { // instant local flags until the server's version arrives
@@ -326,6 +376,8 @@ function saveCache() { try { store('tvac_cache', JSON.stringify({ items: S.items
 // ════════ DATA ════════
 function refresh() {
   if (S.refreshing) return S.refreshing;
+  if (outbox().length) return flushOutbox().then(function () { return outbox().length ? null : refresh(); }); // send offline changes before pulling fresh data
+  if (!navigator.onLine) { offbar(); return Promise.resolve(); }
   $('sync').innerHTML = '<span class="syncing">⟳</span>';
   S.refreshing = apiGet({ action: 'getInventory', pin: S.pin }).then(function (d) {
     S.items = d.items; S.cfg = d.config || {}; S.loaded = true; saveCache(); checkNewAlerts();
@@ -568,7 +620,7 @@ function submitAction(id, status) {
   if (!out) i.statusNote = cond !== 'OK' ? (b.notes || cond) : '';
   quickFlags(i);
   closeModal(); toast((out ? '↗ Signed out: ' : '✓ Signed in: ') + i.name); render();
-  apiPost(b).then(function (d) { updateLocal(d.item); saveCache(); if (!$('modal-root').innerHTML) render(); })
+  postQ(b).then(function (d) { if (d.queued) { saveCache(); queuedToast(d); return; } updateLocal(d.item); saveCache(); if (!$('modal-root').innerHTML) render(); })
     .catch(function (e) { updateLocal(before); render(); toast('⚠ Not saved: ' + e.message, 5000); });
 }
 
@@ -586,7 +638,7 @@ function submitVehicle(id, v) {
   var i = getItem(id), before = JSON.parse(JSON.stringify(i));
   i.status = v ? 'On Vehicle' : 'Available'; i.location = v || i.homeLocation || HOME_LOCATION; i.lastMember = S.member.id; i.lastUpdated = new Date().toISOString();
   closeModal(); toast(v ? '🚑 ' + i.name + ' → ' + v : '🏠 ' + i.name + ' back at station'); render();
-  apiPost({ action: 'setVehicle', id: id, vehicle: v }).then(function (d) { updateLocal(d.item); saveCache(); if (!$('modal-root').innerHTML) render(); })
+  postQ({ action: 'setVehicle', id: id, vehicle: v }).then(function (d) { if (d.queued) { saveCache(); queuedToast(d); return; } updateLocal(d.item); saveCache(); if (!$('modal-root').innerHTML) render(); })
     .catch(function (e) { updateLocal(before); render(); toast('⚠ Not saved: ' + e.message, 5000); });
 }
 function vehiclesBody() {
@@ -647,7 +699,7 @@ function submitStatus(id, st) {
   if (st === 'Not Available') i.location = 'Unknown';
   quickFlags(i);
   closeModal(); toast('✓ ' + i.name + ': ' + (st === 'Available' && before.condition === 'Needs Attention' ? 'marked OK' : st)); render();
-  apiPost({ action: 'setStatus', id: id, status: st, notes: notes }).then(function (d) { updateLocal(d.item); saveCache(); if (!$('modal-root').innerHTML) render(); })
+  postQ({ action: 'setStatus', id: id, status: st, notes: notes }).then(function (d) { if (d.queued) { saveCache(); queuedToast(d); return; } updateLocal(d.item); saveCache(); if (!$('modal-root').innerHTML) render(); })
     .catch(function (e) { updateLocal(before); render(); toast('⚠ Not saved: ' + e.message, 5000); });
 }
 
@@ -823,7 +875,7 @@ function renderAdmin() {
   if (!isAdmin()) { go('home'); return; }
   var offCount = S.items.filter(function (i) { return !i.active; }).length;
   $('view').innerHTML =
-    sect('add', '➕ Add item & stickers', '', '<div class="row"><button class="btn" onclick="editItemForm()">Add item</button><button class="btn ghost" onclick="stickerPicker()">🖨 QR stickers</button></div>') +
+    sect('add', '➕ Add item & stickers', spares().length ? spares().length + ' blank stickers' : '', (spares().length ? '<div class="hint" style="margin-bottom:8px">' + spares().length + ' blank pre-printed stickers left. Scan one to set it up, or Add item uses the next one.</div>' : '') + '<div class="row"><button class="btn" onclick="editItemForm()">Add item</button><button class="btn ghost" onclick="stickerPicker()">🖨 QR stickers</button></div>') +
     sect('edit', '✏️ Edit items', S.items.length + ' items', editBody(S.items)) +
     sect('active', '✅ Active stickers', (S.items.length - offCount) + ' active' + (offCount ? ' · ' + offCount + ' inactive' : ''), activeBody(S.items)) +
     sect('kinds', '🎒 FR bag kinds', kinds().length + ' kinds', kindsCard()) +
@@ -862,17 +914,18 @@ function removeMember(id) {
   apiPost({ action: 'deleteMember', id: id }).then(function () { closeModal(); toast('Removed'); loadMembers(); }).catch(function (e) { toast('⚠ ' + e.message); });
 }
 
-function editItemForm(id) {
+function editItemForm(id, spareId) {
   var i = id ? getItem(id) : { type: TYPES[0], name: '', homeLocation: '', notes: '', seal: '', o2Size: 'D', psi: '', hydroDate: '', aedModel: '', serial: '', padsExp: '', pedsPadsExp: '', batteryExp: '', condition: 'OK', active: true };
   var dl = '<datalist id="locs">' + locations().map(function (l) { return '<option value="' + esc(l) + '">'; }).join('') + '</datalist>';
-  showModal('<h3>' + (id ? 'Edit ' + esc(i.id) : 'Add equipment') + '</h3>' + dl +
+  showModal('<h3>' + (id ? 'Edit ' + esc(i.id) : spareId ? '🏷 Set up sticker #' + esc(spareId) : 'Add equipment') + '</h3>' + dl +
+    (spareId ? '<div class="hint">This is a blank pre-printed sticker. Pick what it\'s going on.</div>' : '') +
     '<label>Type</label><select id="e-type" onchange="typeFieldsFor(this.value)"' + (id ? ' disabled' : '') + '>' + TYPES.map(function (t) { return '<option' + (t === i.type ? ' selected' : '') + '>' + t + '</option>'; }).join('') + '</select>' +
     '<label>Name / label</label><input id="e-name" value="' + esc(i.name) + '" placeholder="e.g. FR Bag 1, O2 D-Tank 3, AED — Rig 45-10">' +
-    (!id ? '<label>ID (leave blank to auto-number)</label><input id="e-id" placeholder="Auto: next number (e.g. 1133)" style="text-transform:uppercase">' : '') +
+    (spareId ? '<input id="e-id" type="hidden" value="' + esc(spareId) + '">' : !id ? '<label>ID (leave blank = next spare sticker' + (spares().length ? ', #' + esc(spares().slice().sort(function (a, b) { return a - b; })[0]) : '') + ')</label><input id="e-id" placeholder="Auto" inputmode="numeric">' : '') +
     '<input id="e-home" type="hidden" value="' + esc(i.homeLocation || HOME_LOCATION) + '">' +
     '<div id="e-typefields"></div>' +
     '<label>Permanent notes (stay until edited)</label><textarea id="e-notes">' + esc(i.notes) + '</textarea>' +
-    '<div class="row" style="margin-top:14px"><button class="btn ghost" onclick="closeModal()">Cancel</button><button class="btn" id="f-go" onclick="saveItem(' + (id ? '\'' + esc(id) + '\'' : '') + ')">' + (id ? 'Save' : 'Add + make QR') + '</button></div>' +
+    '<div class="row" style="margin-top:14px"><button class="btn ghost" onclick="closeModal()">Cancel</button><button class="btn" id="f-go" onclick="saveItem(' + (id ? '\'' + esc(id) + '\'' : '') + ')">' + (id ? 'Save' : spareId ? 'Set up sticker' : 'Add + make QR') + '</button></div>' +
     (id ? '<button class="btn ghost" style="margin-top:10px" onclick="stickerPicker([\'' + esc(id) + '\'])">🖨 Print this QR sticker</button>' : ''));
   typeFieldsFor(i.type, i);
 }
@@ -896,8 +949,9 @@ function saveItem(id) {
   if (type === 'AED') { b.serial = $('e-serial').value.trim(); b.padsExp = $('e-pads').value; b.pedsPadsExp = $('e-peds').value; b.batteryExp = $('e-batt').value; }
   busy(true);
   apiPost(b).then(function (d) {
-    toast(id ? '✓ Saved' : '✓ Added ' + d.id);
-    return refresh().then(function () { if (id) closeModal(); else { stickerPicker([d.id]); } });
+    toast(id ? '✓ Saved' : isSpare(d.id) ? '✓ Sticker #' + d.id + ' is set up — it\'s already printed' : '✓ Added ' + d.id);
+    var wasSpare = !id && isSpare(d.id);
+    return refresh().then(function () { if (id || wasSpare) closeModal(); else { stickerPicker([d.id]); } });
   }).catch(function (e) { busy(false); toast('⚠ ' + e.message, 4000); });
 }
 function toggleActive(id, active) {
@@ -938,7 +992,9 @@ function stickerPicker(pre) {
       var l = act.filter(function (i) { return i.type === t; });
       return l.length ? '<div style="display:flex;align-items:center;justify-content:space-between;margin-top:12px"><b>' + TYPE_META[t].icon + ' ' + t + ' (' + l.length + ')</b><button class="btn ghost sm" onclick="stkAll(true,\'' + t + '\')">Select all</button></div>' +
         l.map(function (i) { return '<label class="ck"><input type="checkbox" data-stk="' + esc(i.id) + '" data-type="' + esc(t) + '" onchange="stkCount()"' + (pre.indexOf(i.id) >= 0 ? ' checked' : '') + '> ' + esc(i.name) + ' <span class="hint">' + esc(i.id) + '</span></label>'; }).join('') : '';
-    }).join('') + '</div>' +
+    }).join('') + (spares().length ? '<div style="display:flex;align-items:center;justify-content:space-between;margin-top:12px"><b>🏷 Blank spare stickers (' + spares().length + ')</b><button class="btn ghost sm" onclick="stkAll(true,\'Spare\')">Select all</button></div>' +
+      '<div class="hint">Print now, stick on new equipment later — scan it as admin to set it up.</div>' +
+      spares().map(function (id) { return '<label class="ck"><input type="checkbox" data-stk="' + esc(id) + '" data-type="Spare" onchange="stkCount()"' + (pre.indexOf(id) >= 0 ? ' checked' : '') + '> Blank <span class="hint">' + esc(id) + '</span></label>'; }).join('') : '') + '</div>' +
     '<div class="row" style="position:sticky;bottom:0;background:#fff;padding-top:8px"><button class="btn ghost" onclick="closeModal()">Cancel</button><button class="btn ghost" onclick="stkGo(true)">⬇ Download</button><button class="btn" id="stk-go" onclick="stkGo()">Print (0)</button></div>');
   stkMode(); stkCount();
 }
@@ -957,7 +1013,7 @@ function stkCount() { var n = document.querySelectorAll('[data-stk]:checked').le
 function printStickers(ids) {
   if (!ids.length) { toast('Select at least one item'); return; }
   $('print-area').innerHTML = ids.map(function (id) {
-    var i = getItem(id) || { id: id, name: id, type: '' };
+    var i = getItem(id) || { id: id, name: isSpare(id) ? '' : id, type: '' };
     return '<div class="stk"><img class="qr" src="' + qrImg(qrUrlFor(id)) + '"><div class="tx"><div class="h"><img src="logo.png">TVAC EQUIPMENT</div><div class="n">' + esc(i.name) + '</div><div class="id">' + esc(id) + '</div><div class="f">Scan to sign out · sign in</div></div></div>';
   }).join('');
   var mobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent) || navigator.standalone || matchMedia('(display-mode: standalone)').matches;
@@ -993,7 +1049,7 @@ function stickerZip(ids) {
   var b = $('zip-btn'); if (b) { b.disabled = true; b.textContent = 'Making images…'; }
   Promise.all([ids.length > 1 && !window.JSZip ? loadScript('https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js') : 0, loadImg('logo.png')]).then(function (r) {
     var toBlob = function (cv) { return new Promise(function (ok) { cv.toBlob(ok, 'image/png'); }); };
-    var cvs = ids.map(function (id) { return stickerCanvas(getItem(id) || { id: id, name: id }, r[1]); });
+    var cvs = ids.map(function (id) { return stickerCanvas(getItem(id) || { id: id, name: isSpare(id) ? ' ' : id }, r[1]); });
     if (ids.length === 1) return toBlob(cvs[0]).then(function (bl) { return [bl, 'TVAC-sticker-' + ids[0] + '.png']; });
     var z = new JSZip();
     return Promise.all(cvs.map(toBlob)).then(function (bls) { bls.forEach(function (bl, k) { z.file(ids[k] + '.png', bl); }); return z.generateAsync({ type: 'blob' }); })
@@ -1012,7 +1068,7 @@ function stickerPdf(ids, o) {
   showModal('<h3>🖨 QR stickers</h3><div class="spinner"></div><div class="hint" style="text-align:center">Making PDF…</div>');
   Promise.all([window.jspdf ? 0 : loadScript('https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js'), loadImg('logo.png')]).then(function (r) {
     var logo = r[1], doc, pages = 1, name;
-    var img = function (id) { var cv = stickerCanvas(getItem(id) || { id: id, name: id }, logo); return cv; };
+    var img = function (id) { var cv = stickerCanvas(getItem(id) || { id: id, name: isSpare(id) ? ' ' : id }, logo); return cv; };
     if (o.sheet) {
       var c = sheetCfg(), per = c.cols * c.rows, slot = (o.start || 1) - 1, portrait = c.h > c.w;
       doc = new window.jspdf.jsPDF({ orientation: c.pw > c.ph ? 'landscape' : 'portrait', unit: 'in', format: [c.pw, c.ph] });
@@ -1101,9 +1157,8 @@ function scanned(text) {
   try { var u = new URL(text); id = u.searchParams.get('id') || text; } catch (e) {}
   closeScanner();
   if (navigator.vibrate) navigator.vibrate(60);
-  if (!getItem(id)) { toast('Unknown item: ' + id); return; }
-  S.scanId = id.toUpperCase(); // opened by scanning / typing the ID → members may sign it in or out
-  openItem(id.toUpperCase());
+  if (!getItem(id) && !isSpare(id)) { toast('Unknown item: ' + id); return; }
+  openScanned(id); // opened by scanning / typing the ID → members may sign it in or out
 }
 
 // ════════ MODAL ════════
@@ -1137,6 +1192,9 @@ function updateLocal(item) { var idx = S.items.findIndex(function (i) { return i
   if (navigator.serviceWorker) navigator.serviceWorker.addEventListener('message', function (e) { if (e.data && e.data.type === 'open' && e.data.id && S.pin) openItem(e.data.id); });
   document.addEventListener('visibilitychange', function () { if (!document.hidden && S.pin) refresh(); if (!document.hidden) checkUpdate(); });
   setTimeout(checkUpdate, 5000); setInterval(checkUpdate, 5 * 60000);
+  window.addEventListener('online', function () { offbar(); if (S.pin) refresh(); });
+  window.addEventListener('offline', offbar);
+  offbar();
 })();
 </script>
 </body>
