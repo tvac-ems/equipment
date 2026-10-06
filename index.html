@@ -142,7 +142,7 @@ details.sec[open]>summary{margin-bottom:10px}
     <div id="login-sub" style="color:var(--text2);font-size:14px;margin:4px 0 16px">Enter your PIN</div>
     <input id="pin" type="password" inputmode="numeric" autocomplete="off" placeholder="••••">
     <div id="login-err" style="color:var(--bad);font-size:13px;height:20px;margin:6px 0"></div>
-    <button class="btn red" onclick="doLogin()">Enter</button>
+    <button class="btn red" id="login-go" onclick="doLogin()">Enter</button>
   </div>
 </div>
 
@@ -321,13 +321,24 @@ function locations() {
 }
 
 // ════════ AUTH ════════
+var loggingIn = false;
+function loginBusy(on) {
+  loggingIn = on;
+  var b = $('login-go'); b.disabled = on; b.textContent = on ? 'Logging in…' : 'Enter';
+  $('pin').disabled = on;
+  clearTimeout(loginBusy.t);
+  if (on) loginBusy.t = setTimeout(function () { if (loggingIn) $('login-err').textContent = 'Still connecting, please wait…'; }, 5000);
+}
 function doLogin() {
+  if (loggingIn) return;
   var p = $('pin').value.trim(); if (!p) return;
   $('login-err').textContent = '';
+  loginBusy(true);
   apiGet({ action: 'login', pin: p }).then(function (d) {
+    loginBusy(false); $('login-err').textContent = '';
     S.pin = p; S.member = d.member; store('tvac_pin', p); store('tvac_member', JSON.stringify(d.member));
     startApp();
-  }).catch(function (e) { $('login-err').textContent = '✕ ' + e.message; $('pin').value = ''; $('pin').focus(); });
+  }).catch(function (e) { loginBusy(false); $('login-err').textContent = '✕ ' + (isNetErr(e) ? 'No connection, try again' : e.message); $('pin').value = ''; $('pin').focus(); });
 }
 function accountMenu() {
   showModal('<h3>👤 ' + esc(S.member.name) + '</h3><div class="hint" style="margin-bottom:12px">Member #' + esc(S.member.id) + (isAdmin() ? ' · admin' : '') + '</div>' +
@@ -1202,6 +1213,7 @@ function updateLocal(item) { var idx = S.items.findIndex(function (i) { return i
   else {
     $('login').classList.remove('hidden');
     if (S.pendingId) $('login-sub').textContent = 'Enter your PIN to open ' + S.pendingId;
+    fetch(API_URL + '?action=ping', { redirect: 'follow', credentials: 'omit' }).catch(function () {}); // wake the backend while the PIN is typed
     setTimeout(function () { $('pin').focus(); }, 100);
   }
   if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(function () {});
