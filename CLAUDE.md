@@ -27,9 +27,9 @@ QR equipment sign-in/out for Teaneck Volunteer Ambulance Corps. Members scan a s
 - Vehicles: ambulances 71, 72, 74, 75, 76; 78 (borrowed ambulance); 701 fly car; 702 special ops truck; 711 Gator; 712 spare 1; 713 spare 2; 721 special ops trailer; 722 staging trailer.
 
 ## Stickers
-- The design is a 3 × 1 in sticker with the QR code, logo and ID only, and no names, so names can change without reprinting.
+- The current design is a 3 × 1 in sticker with the QR code, logo and ID only, and no names, so names can change without reprinting.
 - There are two modes, a label printer (one per page) and a sticker sheet (`SHEET_DEF` / `sheetCfg`, with a test-fit page and a start-at-label option).
-- Labels print on a laser printer (Brother HL-L2460DW) using Avery 5520 waterproof labels (1 × 2⅝ in, 30 per sheet).
+- The final sticker size and label stock are not decided yet. Do not change sticker sizes or layouts unless asked.
 
 ## Workflow
 - Test on a phone-sized viewport before pushing.
